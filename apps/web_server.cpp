@@ -3,7 +3,7 @@
 
 int main() {
     auto setting = Setting::getSetting();
-    auto server = Server(setting);
+    auto server = xiaozhi::Server(setting);
     server.run();
     return 0;
 }

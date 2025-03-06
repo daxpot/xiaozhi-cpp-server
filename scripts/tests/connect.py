@@ -5,7 +5,7 @@ ws_url = "ws://127.0.0.1:8000"
 
 async def connect(i):
     async with websockets.connect(ws_url, additional_headers={"Authorization": "Bearer test-token", "Device-Id": "test-device"}) as ws:
-        await ws.send("test")
+        await ws.send('{"type":"hello","version": 1,"transport":"websocket","audio_params":{"format":"opus", "sample_rate":16000, "channels":1, "frame_duration":60}}')
         ret = await ws.recv()
         print(i, ret)
 
