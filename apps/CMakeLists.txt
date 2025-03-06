@@ -1,0 +1,5 @@
+add_executable(web_server web_server.cpp)
+target_compile_features(web_server PUBLIC cxx_std_20)
+set_target_properties(web_server PROPERTIES CXX_EXTENSIONS OFF)
+target_include_directories(web_server PUBLIC ../include)
+target_link_libraries(web_server PUBLIC server)
