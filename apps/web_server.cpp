@@ -2,7 +2,7 @@
 #include <xz-cpp-server/config/setting.h>
 
 int main() {
-    auto setting = Setting::getSetting();
+    auto setting = xiaozhi::Setting::getSetting();
     auto server = xiaozhi::Server(setting);
     server.run();
     return 0;

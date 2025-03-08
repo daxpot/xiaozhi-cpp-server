@@ -1,6 +1,11 @@
 #include <boost/asio/buffer.hpp>
+#include <boost/uuid/random_generator.hpp>
 #include <iostream>
 #include <xz-cpp-server/server.h>
+#include <boost/uuid/uuid.hpp>
+#include <boost/uuid/uuid_generators.hpp>
+#include <boost/uuid/uuid_io.hpp>
+#include <xz-cpp-server/connection.h>
 
 namespace xiaozhi {
     Server::Server(std::shared_ptr<Setting> setting):
@@ -8,7 +13,7 @@ namespace xiaozhi {
         ioc(net::io_context{setting->config["threads"].as<int>()}) {
     }
 
-    net::awaitable<bool> Server::authenticate(websocket::stream<beast::tcp_stream>& ws, http::request<http::string_body>& req) {
+    net::awaitable<bool> Server::authenticate(websocket::stream<beast::tcp_stream> &ws, http::request<http::string_body> &req) {
         beast::flat_buffer buffer;
         co_await http::async_read(ws.next_layer(), buffer, req, net::use_awaitable);
 
@@ -31,6 +36,17 @@ namespace xiaozhi {
         co_return false;
     }
 
+    net::awaitable<std::string> Server::send_welcome(websocket::stream<beast::tcp_stream> &ws) {
+        YAML::Emitter emitter;
+        auto welcome_msg = setting->config["xiaozhi"];
+        auto uuid = boost::uuids::random_generator()();
+        auto session_id = boost::uuids::to_string(uuid);
+        welcome_msg["session_id"] = session_id;
+        emitter << YAML::DoubleQuoted << YAML::Flow << YAML::BeginSeq << welcome_msg;
+        co_await ws.async_write(boost::asio::buffer(std::string(emitter.c_str() + 1)), net::use_awaitable);
+        co_return session_id;
+    }
+
     net::awaitable<void> Server::run_session(websocket::stream<beast::tcp_stream> ws) {
         ws.set_option(websocket::stream_base::timeout::suggested(beast::role_type::server));
         http::request<http::string_body> req;
@@ -39,25 +55,10 @@ namespace xiaozhi {
             co_return;
         }
         co_await ws.async_accept(req, net::use_awaitable);
-        YAML::Emitter emitter;
-        auto welcome_msg = setting->config["xiaozhi"];
-        welcome_msg["session_id"] = "xxx";
-        emitter << YAML::DoubleQuoted << YAML::Flow << YAML::BeginSeq << welcome_msg;
+        auto session_id = co_await send_welcome(ws);
 
-        co_await ws.async_write(boost::asio::buffer(std::string(emitter.c_str() + 1)), net::use_awaitable);
-        while(true) {
-            beast::flat_buffer buffer;
-            auto [ec, _] = co_await ws.async_read(buffer, net::as_tuple(net::use_awaitable));
-            if(ec == websocket::error::closed) {
-                co_return;
-            } else if(ec) {
-                throw boost::system::system_error(ec);
-            }
-            std::cout << boost::beast::buffers_to_string(buffer.data()) << std::endl;
-            
-            // ws.text(ws.got_text());
-            // co_await ws.async_write(buffer.data(), net::use_awaitable);
-        }
+        Connection conn {setting, std::move(session_id)};
+        co_await conn.handle(ws);
     }
 
     net::awaitable<void> Server::listen(net::ip::tcp::endpoint endpoint) {

@@ -9,9 +9,13 @@ endfunction()
 add_target_with_config(config_setting config/setting.cpp)
 target_link_libraries(config_setting PUBLIC yaml-cpp::yaml-cpp)
 
+#connection library
+add_target_with_config(connection connection.cpp)
+target_link_libraries(connection PUBLIC config_setting)
+
 #server library
 add_target_with_config(server server.cpp)
-target_link_libraries(server PUBLIC config_setting)
+target_link_libraries(server PUBLIC connection)
 
 #
 file(GLOB HEADER_LIST CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/include/xz-cpp-server/**/*.h")
