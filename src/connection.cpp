@@ -5,7 +5,10 @@
 #include <xz-cpp-server/silero_vad/vad.h>
 
 namespace xiaozhi {
-    Connection::Connection(std::shared_ptr<Setting> setting, std::string session_id):setting(setting), session_id(session_id) {
+    Connection::Connection(std::shared_ptr<Setting> setting, std::string session_id):
+        setting(setting), 
+        session_id(session_id),
+        vad(setting) {
 
     }
     
@@ -15,7 +18,7 @@ namespace xiaozhi {
     }
 
     net::awaitable<void> Connection::handle_binary(websocket::stream<beast::tcp_stream> &ws, beast::flat_buffer &buffer) {
-        auto pcm = vad.check_vad(buffer);
+        auto pcm = vad.merge_voice(buffer);
         co_return;
     }
 

@@ -31,7 +31,7 @@ void color_formatter(boost::log::record_view const& rec, boost::log::formatting_
     }
 }
 
-void init_logging() {
+void init_logging(std::string log_level) {
     // 设置日志输出到终端
     auto console_sink = boost::log::add_console_log(std::cout);
     // 设置自定义格式化函数
@@ -46,14 +46,22 @@ void init_logging() {
 
     // 添加常用属性，如时间戳
     boost::log::add_common_attributes();
+    auto level = boost::log::trivial::info;
+    if(log_level == "DEBUG") {
+        level = boost::log::trivial::debug;
+    } else if(log_level == "ERROR") {
+        level = boost::log::trivial::error;
+    } else if(log_level == "WARNING") {
+        level = boost::log::trivial::warning;
+    }
     boost::log::core::get()->set_filter(
-        boost::log::trivial::severity >= boost::log::trivial::info
+        boost::log::trivial::severity >= level
     );
 }
 
 int main() {
     auto setting = xiaozhi::Setting::getSetting();
-    init_logging();
+    init_logging(setting->config["log"]["log_level"].as<std::string>());
     auto server = xiaozhi::Server(setting);
     server.run();
     return 0;
