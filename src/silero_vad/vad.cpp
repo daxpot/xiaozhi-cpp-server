@@ -1,5 +1,5 @@
 #include "xz-cpp-server/silero_vad/silero_vad.h"
-#include <iostream>
+#include <boost/log/trivial.hpp>
 #include <optional>
 #include <opus/opus.h>
 #include <xz-cpp-server/silero_vad/vad.h>
@@ -28,11 +28,11 @@ namespace xiaozhi {
                 auto ret = vad->predict(pcm);
                 // std::cout << "predict:" << buffer.size() << " - " << ret << std::endl; 
                 return std::move(pcm);
-            } else {
-                std::cerr << "音频样本不足512，无法检测vad: " << pcm.size() << std::endl;    
+            } else { 
+                BOOST_LOG_TRIVIAL(error) <<  "音频样本不足512，无法检测vad: " << pcm.size();
             }
         } else {
-            std::cerr << "opus解码失败: " << opus_strerror(decoded_samples) << std::endl;
+            BOOST_LOG_TRIVIAL(error) << "opus解码失败: " << opus_strerror(decoded_samples);
         }
         return std::nullopt;
     }

@@ -7,6 +7,7 @@ endfunction()
 #config setting
 add_target_with_config(config_setting config/setting.cpp)
 target_link_libraries(config_setting PUBLIC yaml-cpp::yaml-cpp)
+target_link_libraries(config_setting PUBLIC Boost::log)
 
 add_subdirectory(silero_vad)
 

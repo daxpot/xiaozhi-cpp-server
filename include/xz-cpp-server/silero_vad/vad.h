@@ -8,7 +8,7 @@ namespace beast = boost::beast;
 namespace xiaozhi {
     class Vad {
         private:
-            std::vector<float> pcm_buffer;
+            // std::vector<float> pcm_buffer;
             OpusDecoder* decoder;
         public:
             Vad();

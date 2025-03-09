@@ -1,5 +1,5 @@
 #include <boost/beast/core/multi_buffer.hpp>
-#include <iostream>
+#include <boost/log/trivial.hpp>
 #include <string>
 #include <xz-cpp-server/connection.h>
 #include <xz-cpp-server/silero_vad/vad.h>
@@ -10,7 +10,7 @@ namespace xiaozhi {
     }
     
     net::awaitable<void> Connection::handle_text(websocket::stream<beast::tcp_stream> &ws, beast::flat_buffer &buffer) {
-        std::cout << boost::beast::buffers_to_string(buffer.data()) << std::endl;
+        BOOST_LOG_TRIVIAL(info) << "收到文本消息:" << boost::beast::buffers_to_string(buffer.data());
         co_return;
     }
 

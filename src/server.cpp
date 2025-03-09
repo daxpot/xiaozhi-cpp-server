@@ -1,6 +1,6 @@
 #include <boost/asio/buffer.hpp>
+#include <boost/log/trivial.hpp>
 #include <boost/uuid/random_generator.hpp>
-#include <iostream>
 #include <xz-cpp-server/server.h>
 #include <boost/uuid/uuid.hpp>
 #include <boost/uuid/uuid_generators.hpp>
@@ -23,7 +23,7 @@ namespace xiaozhi {
 
         auto auth = req.find("Authorization");
         if(auth == req.end()) {
-            std::cout << "not valid auth" << std::endl;
+            BOOST_LOG_TRIVIAL(info) << "not valid auth";
             co_return false;
         }
         auto val  = auth->value();
@@ -74,7 +74,7 @@ namespace xiaozhi {
                         try {
                             std::rethrow_exception(e);
                         } catch(std::exception& e) {
-                            std::cerr << "Session error:" << e.what() << std::endl;
+                            BOOST_LOG_TRIVIAL(error) << "Session error:" << e.what();
                         }
                     }
                 }
@@ -91,7 +91,7 @@ namespace xiaozhi {
                     try {
                         std::rethrow_exception(e);
                     } catch(std::exception const& e) {
-                        std::cerr << "Listen error:" << e.what() << std::endl;
+                        BOOST_LOG_TRIVIAL(error) << "Listen error:" << e.what();
                     }
                 }
             }  

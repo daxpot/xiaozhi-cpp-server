@@ -8,6 +8,7 @@ project(
 )
 
 include_directories("${PROJECT_SOURCE_DIR}/include")
+find_package(Boost COMPONENTS log log_setup REQUIRED)
 
 add_subdirectory(extern/yaml-cpp)
 add_subdirectory(extern/json)
