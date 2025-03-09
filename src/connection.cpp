@@ -1,9 +1,11 @@
+#include <boost/beast/core/multi_buffer.hpp>
 #include <iostream>
 #include <string>
 #include <xz-cpp-server/connection.h>
+#include <xz-cpp-server/silero_vad/vad.h>
 
 namespace xiaozhi {
-    Connection::Connection(std::shared_ptr<xiaozhi::Setting> setting, std::string session_id):setting(setting), session_id(session_id) {
+    Connection::Connection(std::shared_ptr<Setting> setting, std::string session_id):setting(setting), session_id(session_id) {
 
     }
     
@@ -11,6 +13,12 @@ namespace xiaozhi {
         std::cout << boost::beast::buffers_to_string(buffer.data()) << std::endl;
         co_return;
     }
+
+    net::awaitable<void> Connection::handle_binary(websocket::stream<beast::tcp_stream> &ws, beast::flat_buffer &buffer) {
+        auto pcm = vad.check_vad(buffer);
+        co_return;
+    }
+
 
     net::awaitable<void> Connection::handle(websocket::stream<beast::tcp_stream> &ws) {
         while(true) {
@@ -24,7 +32,7 @@ namespace xiaozhi {
             if(ws.got_text()) {
                 co_await handle_text(ws, buffer);
             } else if(ws.got_binary()) {
-                // std::cout << "got binary:" << buffer.size() << std::endl;
+                co_await handle_binary(ws, buffer);
             }
         }
     }

@@ -7,6 +7,8 @@ project(
     LANGUAGES CXX
 )
 
+include_directories("${PROJECT_SOURCE_DIR}/include")
+
 add_subdirectory(extern/yaml-cpp)
 add_subdirectory(extern/json)
 add_subdirectory(apps)
@@ -15,3 +17,10 @@ add_subdirectory(src)
 include(CTest)
 add_subdirectory(extern/Catch2)
 add_subdirectory(tests)
+
+file(GLOB HEADER_LIST CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/include/xz-cpp-server/**/*.h")
+source_group(
+    TREE "${PROJECT_SOURCE_DIR}/include"
+    PREFIX "Header Files"
+    FILES ${HEADER_LIST}
+)
