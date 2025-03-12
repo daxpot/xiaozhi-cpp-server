@@ -6,12 +6,11 @@
 namespace xiaozhi {
     class VoiceDetector {
         private:
-            std::shared_ptr<Ort::Session> session = nullptr;
-            Ort::MemoryInfo memory_info;
-            const int window_size = 512; // Silero-VAD 窗口大小
-            std::vector<float> state;    // Silero-VAD 隐藏状态
-            int64_t sample_rate = 16000;
-            float threshold = 0.5;
+            std::shared_ptr<Ort::Session> session_ = nullptr;
+            Ort::MemoryInfo memory_info_;
+            const int window_size_ = 512; // Silero-VAD 窗口大小
+            std::vector<float> state_;    // Silero-VAD 隐藏状态
+            int64_t sample_rate_ = 16000;
         public:
         VoiceDetector();
         ~VoiceDetector();

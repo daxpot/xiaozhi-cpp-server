@@ -18,13 +18,7 @@ add_target_with_config(config_setting config/setting.cpp)
 target_link_libraries(config_setting PUBLIC yaml-cpp::yaml-cpp)
 target_link_libraries(config_setting PUBLIC Boost::log)
 
-#asr doubao
-add_target_with_config(asr_doubao asr/doubao.cpp)
-target_link_libraries(asr_doubao PUBLIC config_setting)
-target_link_libraries(asr_doubao PUBLIC common_tools)
-find_package(OpenSSL REQUIRED)
-target_link_libraries(asr_doubao PRIVATE OpenSSL::SSL)
-target_link_libraries(asr_doubao PRIVATE nlohmann_json::nlohmann_json)
+add_subdirectory(asr)
 
 add_subdirectory(silero_vad)
 

@@ -6,6 +6,7 @@
 #include <boost/iostreams/filtering_streambuf.hpp>
 #include <boost/iostreams/copy.hpp>
 #include <boost/iostreams/filter/gzip.hpp>
+#include <chrono>
 
 namespace tools {
     std::string generate_uuid() {
@@ -33,5 +34,11 @@ namespace tools {
         boost::iostreams::copy(out, decompressed);
     
         return decompressed.str();
+    }
+
+    long long get_tms() {
+        auto now = std::chrono::system_clock::now();
+        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch());
+        return ms.count();
     }
 }

@@ -9,17 +9,11 @@ namespace beast = boost::beast;
 namespace xiaozhi {
     class Vad {
         private:
-            std::vector<float> pcm_buffer;
-            OpusDecoder* decoder;
-            long long get_tms();
-            long long last_voice_tms = 0;
-            bool is_last_voice = false;
-            unsigned int min_silence_duration_ms;
-            float threshold;
+            OpusDecoder* decoder_;
+            float threshold_;
         public:
             Vad(std::shared_ptr<Setting> setting);
             ~Vad();
-            std::optional<std::vector<float>> check_vad(beast::flat_buffer &buffer);
-            std::optional<std::vector<float>> merge_voice(beast::flat_buffer &buffer);
+            bool is_vad(beast::flat_buffer &buffer);
     };
 }

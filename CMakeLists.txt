@@ -8,9 +8,10 @@ project(
 )
 
 include_directories("${PROJECT_SOURCE_DIR}/include")
-find_package(Boost COMPONENTS log log_setup REQUIRED)
+find_package(Boost COMPONENTS log log_setup iostreams random REQUIRED)
 
 add_subdirectory(extern/yaml-cpp)
+set(JSON_BuildTests OFF CACHE INTERNAL "")
 add_subdirectory(extern/json)
 add_subdirectory(apps)
 add_subdirectory(src)
@@ -19,7 +20,7 @@ include(CTest)
 add_subdirectory(extern/Catch2)
 add_subdirectory(tests)
 
-file(GLOB HEADER_LIST CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/include/xz-cpp-server/**/*.h")
+file(GLOB HEADER_LIST CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/include/xz-cpp-server/**/*.h" "${PROJECT_SOURCE_DIR}/include/xz-cpp-server/**/*.hpp")
 source_group(
     TREE "${PROJECT_SOURCE_DIR}/include"
     PREFIX "Header Files"
