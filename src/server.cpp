@@ -1,10 +1,6 @@
 #include <boost/asio/buffer.hpp>
 #include <boost/log/trivial.hpp>
-#include <boost/uuid/random_generator.hpp>
 #include <xz-cpp-server/server.h>
-#include <boost/uuid/uuid.hpp>
-#include <boost/uuid/uuid_generators.hpp>
-#include <boost/uuid/uuid_io.hpp>
 #include <xz-cpp-server/connection.h>
 
 namespace xiaozhi {
@@ -36,17 +32,6 @@ namespace xiaozhi {
         co_return false;
     }
 
-    net::awaitable<std::string> Server::send_welcome(websocket::stream<beast::tcp_stream> &ws) {
-        YAML::Emitter emitter;
-        auto welcome_msg = setting->config["xiaozhi"];
-        auto uuid = boost::uuids::random_generator()();
-        auto session_id = boost::uuids::to_string(uuid);
-        welcome_msg["session_id"] = session_id;
-        emitter << YAML::DoubleQuoted << YAML::Flow << YAML::BeginSeq << welcome_msg;
-        co_await ws.async_write(boost::asio::buffer(std::string(emitter.c_str() + 1)), net::use_awaitable);
-        co_return session_id;
-    }
-
     net::awaitable<void> Server::run_session(websocket::stream<beast::tcp_stream> ws) {
         ws.set_option(websocket::stream_base::timeout::suggested(beast::role_type::server));
         http::request<http::string_body> req;
@@ -55,15 +40,14 @@ namespace xiaozhi {
             co_return;
         }
         co_await ws.async_accept(req, net::use_awaitable);
-        auto session_id = co_await send_welcome(ws);
-
-        Connection conn {setting, std::move(session_id)};
+        Connection conn {setting, ws.get_executor()};
         co_await conn.handle(ws);
     }
 
     net::awaitable<void> Server::listen(net::ip::tcp::endpoint endpoint) {
         auto executor = co_await net::this_coro::executor;
         auto acceptor = net::ip::tcp::acceptor{executor, endpoint};
+        BOOST_LOG_TRIVIAL(info) << "Server is running at " << endpoint.address().to_string() << ":" << endpoint.port();
         while(true) {
             net::co_spawn(executor,
                 run_session(websocket::stream<beast::tcp_stream>{

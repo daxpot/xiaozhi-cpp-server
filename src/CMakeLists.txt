@@ -4,17 +4,37 @@ function(add_target_with_config target_name)
     set_target_properties(${target_name} PROPERTIES CXX_EXTENSIONS OFF)
 endfunction()
 
+#config logger
+add_target_with_config(config_logger config/logger.cpp)
+target_link_libraries(config_logger PUBLIC Boost::log Boost::log_setup)
+
+#common tools
+add_target_with_config(common_tools common/tools.cpp)
+target_link_libraries(common_tools PRIVATE Boost::iostreams)
+target_link_libraries(common_tools PRIVATE Boost::random)
+
 #config setting
 add_target_with_config(config_setting config/setting.cpp)
 target_link_libraries(config_setting PUBLIC yaml-cpp::yaml-cpp)
 target_link_libraries(config_setting PUBLIC Boost::log)
+
+#asr doubao
+add_target_with_config(asr_doubao asr/doubao.cpp)
+target_link_libraries(asr_doubao PUBLIC config_setting)
+target_link_libraries(asr_doubao PUBLIC common_tools)
+find_package(OpenSSL REQUIRED)
+target_link_libraries(asr_doubao PRIVATE OpenSSL::SSL)
+target_link_libraries(asr_doubao PRIVATE nlohmann_json::nlohmann_json)
 
 add_subdirectory(silero_vad)
 
 #connection library
 add_target_with_config(connection connection.cpp)
 target_link_libraries(connection PUBLIC config_setting)
+target_link_libraries(connection PUBLIC common_tools)
 target_link_libraries(connection PUBLIC vad)
+target_link_libraries(connection PUBLIC nlohmann_json::nlohmann_json)
+target_link_libraries(connection PUBLIC asr_doubao)
 
 #server library
 add_target_with_config(server server.cpp)
