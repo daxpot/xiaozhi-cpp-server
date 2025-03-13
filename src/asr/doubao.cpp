@@ -376,10 +376,12 @@ namespace xiaozhi {
                     co_return;
                 }
                 auto rej = parse_reponse(beast::buffers_to_string(buffer.data()), is_gzip);
-                if(rej != nullptr) {
-                    if((*rej)["result"].is_array()) {
-                        BOOST_LOG_TRIVIAL(info) << "DoubaoASR recv:" << rej->dump() ;
-                    }
+                if(rej == std::nullopt || (*rej)["code"] != 1000) {
+                    BOOST_LOG_TRIVIAL(error) << "DoubaoASR recv error:" << (rej == std::nullopt ? "" : rej->dump());
+                    co_return;
+                }
+                if((*rej)["result"].is_array()) {
+                    BOOST_LOG_TRIVIAL(info) << "DoubaoASR recv:" << rej->dump() ;
                 }
             }
     };

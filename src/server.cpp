@@ -1,4 +1,5 @@
 #include <boost/asio/buffer.hpp>
+#include <boost/asio/this_coro.hpp>
 #include <boost/log/trivial.hpp>
 #include <xz-cpp-server/server.h>
 #include <xz-cpp-server/connection.h>
@@ -40,8 +41,9 @@ namespace xiaozhi {
             co_return;
         }
         co_await ws.async_accept(req, net::use_awaitable);
-        Connection conn {setting, ws.get_executor()};
-        co_await conn.handle(ws);
+        auto executor = co_await net::this_coro::executor;
+        Connection conn {setting, std::move(ws), executor};
+        co_await conn.handle();
     }
 
     net::awaitable<void> Server::listen(net::ip::tcp::endpoint endpoint) {

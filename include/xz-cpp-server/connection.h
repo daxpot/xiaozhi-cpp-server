@@ -22,13 +22,14 @@ namespace xiaozhi {
             Vad vad_;
             boost::asio::steady_timer silence_timer_;
             std::shared_ptr<DoubaoASR> asr_ = nullptr;
+            websocket::stream<beast::tcp_stream> ws_;
 
             void audio_silence_end(const boost::system::error_code& ec);
-            net::awaitable<void> handle_text(websocket::stream<beast::tcp_stream> &ws, beast::flat_buffer &buffer);
-            net::awaitable<void> handle_binary(websocket::stream<beast::tcp_stream> &ws, beast::flat_buffer &buffer);
-            net::awaitable<void> send_welcome(websocket::stream<beast::tcp_stream> &ws);
+            net::awaitable<void> handle_text(beast::flat_buffer &buffer);
+            net::awaitable<void> handle_binary(beast::flat_buffer &buffer);
+            net::awaitable<void> send_welcome();
         public:
-            Connection(std::shared_ptr<Setting> setting, net::any_io_executor executor);
-            net::awaitable<void> handle(websocket::stream<beast::tcp_stream> &ws);
+            Connection(std::shared_ptr<Setting> setting, websocket::stream<beast::tcp_stream> ws, net::any_io_executor executor);
+            net::awaitable<void> handle();
     };
 }
