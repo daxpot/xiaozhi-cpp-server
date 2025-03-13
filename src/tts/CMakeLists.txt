@@ -1,0 +1,8 @@
+add_library(tts_bytedancev3 bytedancev3.cpp)
+target_compile_features(tts_bytedancev3 PUBLIC cxx_std_20)
+set_target_properties(tts_bytedancev3 PROPERTIES CXX_EXTENSIONS OFF)
+target_link_libraries(tts_bytedancev3 PUBLIC config_setting)
+target_link_libraries(tts_bytedancev3 PUBLIC common_tools)
+find_package(OpenSSL REQUIRED)
+target_link_libraries(tts_bytedancev3 PRIVATE OpenSSL::SSL)
+target_link_libraries(tts_bytedancev3 PRIVATE nlohmann_json::nlohmann_json)

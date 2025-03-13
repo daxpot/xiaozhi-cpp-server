@@ -14,3 +14,6 @@ endforeach()
 
 target_link_libraries(asr PUBLIC config_logger)
 target_link_libraries(asr PUBLIC asr_doubao)
+
+target_link_libraries(tts PUBLIC config_logger)
+target_link_libraries(tts PUBLIC tts_bytedancev3)

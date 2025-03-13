@@ -19,7 +19,8 @@ target_link_libraries(config_setting PUBLIC yaml-cpp::yaml-cpp)
 target_link_libraries(config_setting PUBLIC Boost::log)
 
 add_subdirectory(asr)
-
+add_subdirectory(tts)
+add_subdirectory(llm)
 add_subdirectory(silero_vad)
 
 #connection library

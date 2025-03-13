@@ -55,7 +55,7 @@ std::vector<uint8_t> build_payload(uint8_t msg_type, uint8_t flags, std::string 
     return data;
 }
 
-std::optional<nlohmann::basic_json<>> parse_reponse(std::string payload, bool gzip_compression) {
+std::optional<nlohmann::basic_json<>> parse_response(std::string payload, bool gzip_compression) {
     int header_len = (payload[0] & 0x0f) << 2;
     int message_type = (payload[1] & 0xf0) >> 4;
     int message_serial = (payload[2] & 0xf0) >> 4;
@@ -332,7 +332,7 @@ namespace xiaozhi {
                     clear("DoubaoASR recv full server:", ec);
                     co_return;
                 }
-                auto rej = parse_reponse(beast::buffers_to_string(buffer.data()), is_gzip);
+                auto rej = parse_response(beast::buffers_to_string(buffer.data()), is_gzip);
                 if(rej == std::nullopt || (*rej)["code"] != 1000) {
                     clear();
                     co_return;
@@ -384,7 +384,7 @@ namespace xiaozhi {
                     clear("DoubaoASR recv server:", ec);
                     co_return;
                 }
-                auto rej = parse_reponse(beast::buffers_to_string(buffer.data()), is_gzip);
+                auto rej = parse_response(beast::buffers_to_string(buffer.data()), is_gzip);
                 if(rej == std::nullopt || (*rej)["code"] != 1000) {
                     BOOST_LOG_TRIVIAL(error) << "DoubaoASR recv error:" << (rej == std::nullopt ? "" : rej->dump());
                     co_return;
