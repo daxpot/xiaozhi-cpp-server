@@ -9,6 +9,7 @@
 #include <boost/lockfree/policies.hpp>
 #include <boost/log/trivial.hpp>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -172,9 +173,8 @@ public:
 };
 
 namespace xiaozhi {
-    net::awaitable<std::shared_ptr<DoubaoASR>> DoubaoASR::createInstance() {
-        auto executor = co_await net::this_coro::executor;
-        co_return std::make_shared<DoubaoASR>(executor);
+    std::shared_ptr<DoubaoASR> DoubaoASR::createInstance(net::any_io_executor &executor) {
+        return std::make_shared<DoubaoASR>(executor);
     }
     DoubaoASR::DoubaoASR(net::any_io_executor &executor) {
         auto setting = xiaozhi::Setting::getSetting();
@@ -194,6 +194,7 @@ namespace xiaozhi {
             ssl::context ctx_;
             websocket::stream<ssl::stream<beast::tcp_stream>> ws_;
             boost::lockfree::spsc_queue<std::optional<beast::flat_buffer>, boost::lockfree::capacity<128>> queue;
+            std::function<void(std::string)> on_detect_cb_;
         public:
             ASRImpl(std::shared_ptr<Setting> setting, net::any_io_executor &executor):
                 executor_(executor),
@@ -215,9 +216,13 @@ namespace xiaozhi {
                 co_await start();
             }
             net::awaitable<void> close() {
-                clear();
-                auto [ec] = co_await ws_.async_close(websocket::close_code::normal, net::as_tuple(net::use_awaitable));
-                BOOST_LOG_TRIVIAL(info) << "DoubaoASR websocket close: " << (ec ? ec.message() : "success");
+                if(is_connected_ || is_connecting_) {
+                    clear();
+                    auto [ec] = co_await ws_.async_close(websocket::close_code::normal, net::as_tuple(net::use_awaitable));
+                    BOOST_LOG_TRIVIAL(info) << "DoubaoASR websocket close: " << (ec ? ec.message() : "success");
+                } else {
+                    BOOST_LOG_TRIVIAL(info) << "DoubaoASR websocket already closed.";
+                }
             }
             void send_opus(std::optional<beast::flat_buffer> buf) {
                 if(queue.write_available()) {
@@ -225,6 +230,10 @@ namespace xiaozhi {
                 } else {
                     BOOST_LOG_TRIVIAL(info) << "DoubaoASR queue not write available:";
                 }
+            }
+
+            void on_detect(std::function<void(std::string)> callback) {
+                on_detect_cb_ = callback;
             }
         private:
             void clear() {
@@ -380,8 +389,16 @@ namespace xiaozhi {
                     BOOST_LOG_TRIVIAL(error) << "DoubaoASR recv error:" << (rej == std::nullopt ? "" : rej->dump());
                     co_return;
                 }
-                if((*rej)["result"].is_array()) {
-                    BOOST_LOG_TRIVIAL(info) << "DoubaoASR recv:" << rej->dump() ;
+                auto& result = (*rej)["result"];
+                if(result.is_array()) {
+                    BOOST_LOG_TRIVIAL(info) << "DoubaoASR detect:" << rej->dump();
+                    std::string sentence;
+                    for(const auto &item : result) {
+                        sentence += item["text"].get<std::string>();
+                    }
+                    if(on_detect_cb_) {
+                        on_detect_cb_(std::move(sentence));
+                    }
                 }
             }
     };
@@ -414,4 +431,7 @@ namespace xiaozhi {
         return impl_->send_opus(std::move(buf));
     }
 
+    void DoubaoASR::on_detect(std::function<void(std::string)> callback) {
+        return impl_->on_detect(callback);
+    }
 }

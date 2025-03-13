@@ -1,21 +1,8 @@
-#include "nlohmann/json_fwd.hpp"
-#include "xz-cpp-server/asr/doubao.h"
-#include <boost/asio/placeholders.hpp>
-#include <boost/asio/steady_timer.hpp>
-#include <boost/asio/use_awaitable.hpp>
 #include <boost/beast/core/bind_handler.hpp>
-#include <boost/beast/core/flat_buffer.hpp>
-#include <boost/beast/core/multi_buffer.hpp>
 #include <boost/log/trivial.hpp>
 #include <chrono>
-#include <fstream>
-#include <optional>
-#include <opus/opus.h>
-#include <opus/opus_defines.h>
 #include <string>
-#include <utility>
 #include <xz-cpp-server/connection.h>
-#include <xz-cpp-server/silero_vad/vad.h>
 #include <xz-cpp-server/common/tools.h>
 #include <nlohmann/json.hpp>
 
@@ -25,7 +12,13 @@ namespace xiaozhi {
         vad_(setting),
         ws_(std::move(ws)),
         silence_timer_(executor) {
-            min_silence_tms = setting->config["VAD"]["SileroVAD"]["min_silence_duration_ms"].as<int>();
+            min_silence_tms_ = setting->config["VAD"]["SileroVAD"]["min_silence_duration_ms"].as<int>();
+            asr_ = DoubaoASR::createInstance(executor);
+            asr_->on_detect(beast::bind_front_handler(&Connection::on_asr_detect, this));
+    }
+
+    void Connection::on_asr_detect(std::string text) {
+        BOOST_LOG_TRIVIAL(info) << "Connection recv asr text:" << text;
     }
 
     net::awaitable<void> Connection::send_welcome() {
@@ -61,7 +54,7 @@ namespace xiaozhi {
             asr_->connect();
             asr_->send_opus(std::move(buffer));
             silence_timer_.cancel();
-            silence_timer_.expires_after(std::chrono::milliseconds(min_silence_tms));
+            silence_timer_.expires_after(std::chrono::milliseconds(min_silence_tms_));
             silence_timer_.async_wait(beast::bind_front_handler(&Connection::audio_silence_end, this));
         } else {
             BOOST_LOG_TRIVIAL(debug) << "收到音频(" << &ws_ << "):" << buffer.size();
@@ -71,13 +64,14 @@ namespace xiaozhi {
 
 
     net::awaitable<void> Connection::handle() {
-        asr_ = co_await DoubaoASR::createInstance();
         while(true) {
             beast::flat_buffer buffer;
             auto [ec, _] = co_await ws_.async_read(buffer, net::as_tuple(net::use_awaitable));
             if(ec == websocket::error::closed) {
+                asr_->close();
                 co_return;
             } else if(ec) {
+                asr_->close();
                 throw boost::system::system_error(ec);
             }
             if(ws_.got_text()) {

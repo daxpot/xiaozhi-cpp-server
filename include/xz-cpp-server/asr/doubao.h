@@ -2,7 +2,6 @@
 #include <boost/asio.hpp>
 #include <boost/beast.hpp>
 #include <memory>
-#include <utility>
 namespace net = boost::asio;
 namespace beast = boost::beast;
 
@@ -13,9 +12,10 @@ namespace xiaozhi {
             std::unique_ptr<ASRImpl> impl_;
         public:
             DoubaoASR(net::any_io_executor &executor);
-            static net::awaitable<std::shared_ptr<DoubaoASR>> createInstance();
+            static std::shared_ptr<DoubaoASR> createInstance(net::any_io_executor &executor);
             void connect();
             void close();
             void send_opus(std::optional<beast::flat_buffer> buf);
+            void on_detect(std::function<void(std::string)> callback);
     };
 }

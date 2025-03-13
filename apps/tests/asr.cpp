@@ -3,7 +3,8 @@
 #include <xz-cpp-server/config/logger.h>
 
 net::awaitable<void> test() {
-    auto asr = co_await xiaozhi::DoubaoASR::createInstance();
+    auto executor = co_await net::this_coro::executor;
+    auto asr = xiaozhi::DoubaoASR::createInstance(executor);
     asr->connect();
     std::cout << "test end" << std::endl;
 }

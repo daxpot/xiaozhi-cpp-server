@@ -16,7 +16,7 @@ namespace websocket = boost::beast::websocket;
 namespace xiaozhi {
     class Connection: public std::enable_shared_from_this<Connection> {
         private:
-            int min_silence_tms = 700;
+            int min_silence_tms_ = 700;
             std::shared_ptr<Setting> setting_ = nullptr;
             std::string session_id_;
             Vad vad_;
@@ -25,6 +25,7 @@ namespace xiaozhi {
             websocket::stream<beast::tcp_stream> ws_;
 
             void audio_silence_end(const boost::system::error_code& ec);
+            void on_asr_detect(std::string);
             net::awaitable<void> handle_text(beast::flat_buffer &buffer);
             net::awaitable<void> handle_binary(beast::flat_buffer &buffer);
             net::awaitable<void> send_welcome();
