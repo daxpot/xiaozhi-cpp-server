@@ -1,24 +1,64 @@
+#include "nlohmann/json_fwd.hpp"
+#include <boost/asio/co_spawn.hpp>
+#include <boost/asio/registered_buffer.hpp>
+#include <boost/asio/use_awaitable.hpp>
 #include <boost/beast/core/bind_handler.hpp>
 #include <boost/log/trivial.hpp>
 #include <chrono>
+#include <cstdint>
 #include <string>
+#include <vector>
 #include <xz-cpp-server/connection.h>
 #include <xz-cpp-server/common/tools.h>
 #include <nlohmann/json.hpp>
+#include <xz-cpp-server/tts/bytedancev3.h>
 
 namespace xiaozhi {
     Connection::Connection(std::shared_ptr<Setting> setting, websocket::stream<beast::tcp_stream> ws, net::any_io_executor executor):
         setting_(setting), 
         vad_(setting),
+        executor_(executor),
         ws_(std::move(ws)),
-        silence_timer_(executor) {
+        silence_timer_(executor_) {
             min_silence_tms_ = setting->config["VAD"]["SileroVAD"]["min_silence_duration_ms"].as<int>();
-            asr_ = DoubaoASR::createInstance(executor);
-            asr_->on_detect(beast::bind_front_handler(&Connection::on_asr_detect, this));
+            asr_ = DoubaoASR::createInstance(executor_);
+            // asr_->on_detect(beast::bind_front_handler(&Connection::on_asr_detect, this));
+            asr_->on_detect([this](std::string text) {
+                net::co_spawn(executor_, this->on_asr_detect(std::move(text)), [](std::exception_ptr e) {
+                    if(e) {
+                        try {
+                            std::rethrow_exception(e);
+                        } catch(std::exception& e) {
+                            BOOST_LOG_TRIVIAL(error) << "Connect asr detect spawn error:" << e.what();
+                        }
+                    }
+                });
+            });
     }
 
-    void Connection::on_asr_detect(std::string text) {
+    net::awaitable<void> Connection::on_asr_detect(std::string text) {
         BOOST_LOG_TRIVIAL(info) << "Connection recv asr text:" << text;
+        auto tts = BytedanceV3TTS(executor_);
+        ws_.text(true);
+        co_await ws_.async_write(net::buffer("{\"type\":\"tts\",\"state\":\"start\"}"), net::use_awaitable);
+        auto audio = co_await tts.text_to_speak(text);
+        ws_.text(true);
+        nlohmann::json obj = {
+            {"type", "tts"},
+            {"state", "sentence_start"},
+            {"text", text}
+        };
+        co_await ws_.async_write(net::buffer(obj.dump()), net::use_awaitable);
+        int error;
+        auto decoder_ = opus_decoder_create(16000, 1, &error);
+        BOOST_LOG_TRIVIAL(debug) << "opus_decoder_create:" << error;
+        for(auto& data: audio) {
+            ws_.binary(true);
+            co_await ws_.async_write(net::buffer(data), net::use_awaitable);
+        }
+        ws_.text(true);
+        // co_await ws_.async_write(net::buffer("{\"type\":\"tts\",\"state\":\"stop\"}"), net::use_awaitable);
+        co_return;
     }
 
     net::awaitable<void> Connection::send_welcome() {

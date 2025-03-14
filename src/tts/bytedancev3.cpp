@@ -3,10 +3,9 @@
 #include <boost/beast/core/flat_buffer.hpp>
 #include <boost/beast/core/make_printable.hpp>
 #include <boost/beast/http/field.hpp>
-#include <cstdint>
 #include <memory>
+#include <opus/opus_defines.h>
 #include <string>
-#include <string_view>
 #include <vector>
 #include <xz-cpp-server/config/setting.h>
 #include <xz-cpp-server/tts/bytedancev3.h>
@@ -15,6 +14,8 @@
 #include <boost/log/trivial.hpp>
 #include <xz-cpp-server/common/tools.h>
 #include <nlohmann/json.hpp>
+#include <ogg/ogg.h>
+#include <opus/opus.h>
 using tcp = net::ip::tcp;
 namespace beast = boost::beast;
 namespace ssl = net::ssl;
@@ -61,11 +62,11 @@ std::vector<uint8_t> build_payload(int32_t event_code, std::string payload_str, 
     return data;
 }
 
-int32_t parser_response_code(const std::string& payload) {
-    int header_len = 4;
+int32_t parser_response_code(const std::string& payload, int header_len=4) {
     uint32_t event_code = *(unsigned int *) (payload.data() + header_len);
     return boost::endian::big_to_native(event_code);
 }
+
 
 enum EventCodes: int32_t {
     StartConnection = 1,    //1
@@ -221,6 +222,120 @@ namespace xiaozhi {
                 }
             }
 
+            // 从 Ogg 数据中提取 Opus 数据包
+            std::vector<std::vector<uint8_t>> extract_opus_packets(const std::string& ogg_data) {
+                std::vector<std::vector<uint8_t>> opus_packets;
+
+                // 初始化 Ogg 流状态
+                ogg_sync_state oy;
+                ogg_sync_init(&oy);
+
+                // 将 std::string 数据写入 Ogg 同步缓冲区
+                char* buffer = ogg_sync_buffer(&oy, ogg_data.size());
+                memcpy(buffer, ogg_data.data(), ogg_data.size());
+                ogg_sync_wrote(&oy, ogg_data.size());
+
+                // 分割 Ogg 页面
+                ogg_page og;
+                ogg_stream_state os;
+                bool stream_initialized = false;
+
+                while (ogg_sync_pageout(&oy, &og) == 1) {
+                    if (!stream_initialized) {
+                        ogg_stream_init(&os, ogg_page_serialno(&og));
+                        stream_initialized = true;
+                    }
+
+                    // 将页面提交到流状态
+                    if (ogg_stream_pagein(&os, &og) != 0) {
+                        throw std::runtime_error("Failed to process Ogg page");
+                    }
+
+                    // 检查是否是头部页面（跳过 OpusHead 和 OpusTags）
+                    if (ogg_page_bos(&og)) { // Beginning of Stream
+                        continue; // 跳过 "OpusHead"
+                    }
+                    if (strncmp((char*)og.body, "OpusTags", 8) == 0) {
+                        continue; // 跳过 "OpusTags"
+                    }
+
+                    // 提取数据包
+                    ogg_packet op;
+                    while (ogg_stream_packetout(&os, &op) == 1) {
+                        std::vector<uint8_t> packet(op.bytes);
+                        memcpy(packet.data(), op.packet, op.bytes);
+                        opus_packets.push_back(std::move(packet));
+                    }
+                }
+
+                // 清理
+                if (stream_initialized) {
+                    ogg_stream_clear(&os);
+                }
+                ogg_sync_clear(&oy);
+
+                return opus_packets;
+            }
+
+            std::vector<std::vector<uint8_t>> convert_to_960_frames(const std::vector<std::vector<uint8_t>>& opus_packets_320) {
+                std::vector<std::vector<uint8_t>> opus_packets_960;
+            
+                // 初始化 Opus 解码器 (16kHz, 单声道)
+                int error;
+                OpusDecoder* decoder = opus_decoder_create(16000, 1, &error);
+                if (error != OPUS_OK) {
+                    BOOST_LOG_TRIVIAL(error) << "BytedanceTTSV3 failed to create opus decoder:" << opus_strerror(error);
+                    return opus_packets_960;
+                }
+            
+                // 初始化 Opus 编码器 (16kHz, 单声道)
+                OpusEncoder* encoder = opus_encoder_create(16000, 1, OPUS_APPLICATION_AUDIO, &error);
+                if (error != OPUS_OK) {
+                    BOOST_LOG_TRIVIAL(error) << "BytedanceTTSV3 failed to create opus encoder:" << opus_strerror(error);
+                    opus_decoder_destroy(decoder);
+                    return opus_packets_960;
+                }
+            
+                // 每 3 个 320 样本帧合并为一个 960 样本帧
+                for (size_t i = 0; i + 2 < opus_packets_320.size(); i += 3) {
+                    // 解码 3 个 320 样本帧到 PCM
+                    std::vector<int16_t> pcm_960(960); // 目标缓冲区
+                    int samples_decoded = 0;
+            
+                    for (int j = 0; j < 3 && i + j < opus_packets_320.size(); ++j) {
+                        const auto& packet = opus_packets_320[i + j];
+                        int frame_size = opus_decode(decoder, packet.data(), packet.size(), 
+                                                    pcm_960.data() + samples_decoded, 320, 0);
+                        if (frame_size < 0) { 
+                            BOOST_LOG_TRIVIAL(error) << "BytedanceTTSV3 opus decode failed:" << opus_strerror(frame_size);
+                            break;
+                        }
+                        samples_decoded += frame_size; // 通常是 320
+                    }
+            
+                    if (samples_decoded != 960) {
+                        BOOST_LOG_TRIVIAL(error) << "BytedanceTTSV3 not enough samples decoded:" << samples_decoded;
+                        continue;
+                    }
+            
+                    // 编码为 960 样本的 Opus 数据包
+                    std::vector<uint8_t> opus_packet_960(1275); // 最大缓冲区大小
+                    int bytes_written = opus_encode(encoder, pcm_960.data(), 960, 
+                                                   opus_packet_960.data(), opus_packet_960.size());
+                    if (bytes_written < 0) {
+                        BOOST_LOG_TRIVIAL(error) << "BytedanceTTSV3 opus encode failed:" << opus_strerror(bytes_written);
+                        continue;
+                    }
+            
+                    opus_packet_960.resize(bytes_written);
+                    opus_packets_960.push_back(std::move(opus_packet_960));
+                }
+            
+                // 清理
+                opus_decoder_destroy(decoder);
+                opus_encoder_destroy(encoder);
+                return opus_packets_960;
+            }
         public:
             TTSImpl(std::shared_ptr<Setting> setting, net::any_io_executor& executor):
                 executor_(executor),
@@ -235,8 +350,8 @@ namespace xiaozhi {
                     ctx_.set_default_verify_paths();
             }
 
-            net::awaitable<std::vector<std::string>> text_to_speak(const std::string& text) {
-                std::vector<std::string> audio;
+            net::awaitable<std::vector<std::vector<uint8_t>>> text_to_speak(const std::string& text) {
+                std::vector<std::vector<uint8_t>> audio;
                 if(co_await connect() == false) {
                     co_return audio;
                 }
@@ -263,7 +378,15 @@ namespace xiaozhi {
                     if(event_code == EventCodes::SessionFinished) {
                         break;
                     } else if(event_code == EventCodes::TTSResponse) {
-                        audio.push_back(data.substr(28));
+                        auto session_id_len = parser_response_code(data, 8);
+                        // auto audio_len = parser_response_code(data, 12+session_id_len);
+                        // auto session_id = data.substr(12, session_id_len);
+                        // BOOST_LOG_TRIVIAL(debug) << "header:" << data.substr(0, 16+session_id_len);
+                        // BOOST_LOG_TRIVIAL(debug) << "response:" << data.substr(16+session_id_len);
+                        // audio.push_back(data.substr(16+session_id_len));
+                        auto opus_packets_320 = extract_opus_packets(data.substr(16+session_id_len));
+                        auto opus_packets_960 = convert_to_960_frames(opus_packets_320);
+                        audio.insert(audio.end(), opus_packets_960.begin(), opus_packets_960.end());
                     }
                 }
                 co_await finish_connection();
@@ -278,7 +401,7 @@ namespace xiaozhi {
 
     BytedanceV3TTS::~BytedanceV3TTS() = default;
 
-    net::awaitable<std::vector<std::string>> BytedanceV3TTS::text_to_speak(const std::string& text) {
+    net::awaitable<std::vector<std::vector<uint8_t>>> BytedanceV3TTS::text_to_speak(const std::string& text) {
         co_return co_await impl_->text_to_speak(text);
     }
 }

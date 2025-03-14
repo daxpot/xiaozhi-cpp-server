@@ -30,6 +30,7 @@ target_link_libraries(connection PUBLIC common_tools)
 target_link_libraries(connection PUBLIC vad)
 target_link_libraries(connection PUBLIC nlohmann_json::nlohmann_json)
 target_link_libraries(connection PUBLIC asr_doubao)
+target_link_libraries(connection PUBLIC tts_bytedancev3)
 
 #server library
 add_target_with_config(server server.cpp)

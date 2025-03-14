@@ -20,12 +20,14 @@ namespace xiaozhi {
             std::shared_ptr<Setting> setting_ = nullptr;
             std::string session_id_;
             Vad vad_;
+            net::any_io_executor executor_;
+            
             boost::asio::steady_timer silence_timer_;
             std::shared_ptr<DoubaoASR> asr_ = nullptr;
             websocket::stream<beast::tcp_stream> ws_;
 
             void audio_silence_end(const boost::system::error_code& ec);
-            void on_asr_detect(std::string);
+            net::awaitable<void> on_asr_detect(std::string);
             net::awaitable<void> handle_text(beast::flat_buffer &buffer);
             net::awaitable<void> handle_binary(beast::flat_buffer &buffer);
             net::awaitable<void> send_welcome();
