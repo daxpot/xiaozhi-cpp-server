@@ -1,3 +1,4 @@
+#pragma once
 #include <string>
 namespace tools {
     std::string generate_uuid();

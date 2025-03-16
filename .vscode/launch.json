@@ -17,7 +17,7 @@
             "type": "lldb",
             "request": "launch",
             "name": "Debug File",
-            "program": "${workspaceFolder}/build/${relativeFileDirname}/${fileBasenameNoExtension}",
+            "program": "${workspaceFolder}/build/${input:exeName}",
             "args": [],
             "cwd": "${workspaceFolder}",
             "preLaunchTask": "build"
@@ -29,6 +29,13 @@
             "cmakeDebugType": "configure",
             "clean": false,
             "configureAll": false
+        }
+    ],
+    "inputs": [
+        {
+            "id": "exeName",
+            "type": "promptString",
+            "description": "Enter executable relative build dir."
         }
     ]
 }
