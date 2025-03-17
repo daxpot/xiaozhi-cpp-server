@@ -44,3 +44,46 @@ TEST_CASE("request post") {
             && Catch::Matchers::ContainsSubstring("test")
             && Catch::Matchers::ContainsSubstring("value"));
 }
+TEST_CASE("request stream get") {
+    net::io_context ioc;
+    std::promise<std::string> promise;
+    auto future = promise.get_future();
+    net::co_spawn(ioc, [&promise]() -> net::awaitable<void> {
+        nlohmann::json header = {
+            {"Content-Type", "application/json"}
+        };
+        std::string value;
+        co_await request::stream_get("https://echo.websocket.org/test?v=1", header, [&promise, &value](std::span<const char> data) {
+            value.append(data.data(), data.size());
+        });
+        promise.set_value(value);
+    }, net::detached);
+    ioc.run();
+    std::string ret = future.get();
+    // REQUIRE(ret.find("Content-Type: application/json") != std::string::npos);
+    REQUIRE_THAT(ret, Catch::Matchers::ContainsSubstring("Content-Type") 
+            && Catch::Matchers::ContainsSubstring("application/json"));
+}
+
+TEST_CASE("request stream post") {
+    net::io_context ioc;
+    std::promise<std::string> promise;
+    auto future = promise.get_future();
+    net::co_spawn(ioc, [&promise]() -> net::awaitable<void> {
+        nlohmann::json header = {
+            {"Content-Type", "application/json"}
+        };
+        std::string value;
+        co_await request::stream_post("https://echo.websocket.org/test?v=1", header, R"({"stream": true})", [&promise, &value](std::span<const char> data) {
+            value.append(data.data(), data.size());
+        });
+        promise.set_value(value);
+    }, net::detached);
+    ioc.run();
+    std::string ret = future.get();
+    // REQUIRE(ret.find("Content-Type: application/json") != std::string::npos);
+    REQUIRE_THAT(ret, Catch::Matchers::ContainsSubstring("Content-Type") 
+            && Catch::Matchers::ContainsSubstring("application/json")
+            && Catch::Matchers::ContainsSubstring("stream")
+            && Catch::Matchers::ContainsSubstring("true"));
+}
