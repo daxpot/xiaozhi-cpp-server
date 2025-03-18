@@ -6,7 +6,8 @@
 #include <xz-cpp-server/config/setting.h>
 #include <boost/beast.hpp>
 #include <xz-cpp-server/common/request.h>
-#include <nlohmann/json.hpp>
+#include <boost/json.hpp>
+
 
 namespace xiaozhi {
     namespace llm {
@@ -15,7 +16,7 @@ namespace xiaozhi {
                 std::string conversation_id_;
                 const std::string base_url_;
                 const std::string api_key_;
-                nlohmann::json header_;
+                boost::json::object header_;
             public:
                 Impl(std::shared_ptr<Setting> setting, net::any_io_executor &executor):
                     base_url_(setting->config["LLM"]["DifyLLM"]["base_url"].as<std::string>()),
@@ -31,31 +32,31 @@ namespace xiaozhi {
                     co_return "";
                 }
 
-                net::awaitable<void> response(const std::vector<Dialogue>& dialogue, const std::function<void(std::string)>& callback) {
+                net::awaitable<void> response(const std::vector<Dialogue>& dialogue, const std::function<void(std::string_view)>& callback) {
                     std::string query;
                     auto it = std::find_if(dialogue.rbegin(), dialogue.rend(), [](auto& x) {return x.role == "user";});
                     if(it != dialogue.rend()) {
                         query = it->content;
                     }
                     const std::string url = std::format("{}/chat-messages", base_url_);
-                    nlohmann::json data = {
+                    boost::json::object data = {
                         {"query", std::move(query)},
                         {"response_mode", "streaming"},
                         {"user", "143523"},
-                        {"inputs", nlohmann::json({})}
+                        {"inputs", boost::json::object({})}
                     };
-                    co_await request::stream_post(url, header_, data.dump(), [&callback](std::string res) {
+                    co_await request::stream_post(url, header_, boost::json::serialize(data), [&callback](std::string res) {
                         std::vector<std::string> result;
                         boost::split(result, res, boost::is_any_of("\n"));
                         for(auto& line : result) {
                             if(line.size() == 0)
                                 continue;
                             if(line.starts_with("data:")) {
-                                auto rej = nlohmann::json::parse(line.begin()+5, line.end());
-                                if(rej["event"] == "error") {
+                                auto rej = boost::json::parse(std::string_view(line.data() + 5, line.size() - 5)).as_object();
+                                if(rej.at("event") == "error") {
                                     BOOST_LOG_TRIVIAL(error) << "Dify api error:" << line;
-                                } else if(!rej["answer"].empty()) {
-                                    callback(rej["answer"].get<std::string>());
+                                } else if(rej.contains("answer")) {
+                                    callback(rej.at("answer").as_string());
                                 }
                             }
                         }
@@ -77,7 +78,7 @@ namespace xiaozhi {
             co_return co_await impl_->create_session();
         }
 
-        net::awaitable<void> Dify::response(const std::vector<Dialogue>& dialogue, const std::function<void(std::string)>& callback) {
+        net::awaitable<void> Dify::response(const std::vector<Dialogue>& dialogue, const std::function<void(std::string_view)>& callback) {
             co_await impl_->response(dialogue, callback);
         }
     }

@@ -8,7 +8,7 @@ namespace xiaozhi {
                 CozeV3(net::any_io_executor &executor);
                 ~CozeV3();
                 net::awaitable<std::string> create_session() override;
-                net::awaitable<void> response(const std::vector<Dialogue>& dialogue, const std::function<void(std::string)>& callback) override;
+                net::awaitable<void> response(const std::vector<Dialogue>& dialogue, const std::function<void(std::string_view)>& callback) override;
             private:
                 class Impl;
                 std::unique_ptr<Impl> impl_;

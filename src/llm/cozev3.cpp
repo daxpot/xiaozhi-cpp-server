@@ -1,6 +1,10 @@
 #include <boost/algorithm/string/classification.hpp>
 #include <boost/algorithm/string/split.hpp>
+#include <boost/json/object.hpp>
+#include <boost/json/parse.hpp>
+#include <boost/json/serialize.hpp>
 #include <boost/log/trivial.hpp>
+#include <boost/system/detail/error_code.hpp>
 #include <format>
 #include <functional>
 #include <boost/algorithm/string.hpp>
@@ -11,7 +15,7 @@
 #include <xz-cpp-server/config/setting.h>
 #include <boost/beast.hpp>
 #include <xz-cpp-server/common/request.h>
-#include <nlohmann/json.hpp>
+#include <boost/json.hpp>
 
 namespace xiaozhi {
     namespace llm {
@@ -21,7 +25,7 @@ namespace xiaozhi {
                 std::string bot_id_;
                 std::string user_id_;
                 // std::string access_token_;
-                nlohmann::json header_;
+                boost::json::object header_;
             public:
                 Impl(std::shared_ptr<Setting> setting, net::any_io_executor &executor):
                     bot_id_(setting->config["LLM"]["CozeLLMV3"]["bot_id"].as<std::string>()),
@@ -36,23 +40,23 @@ namespace xiaozhi {
                 net::awaitable<std::string> create_session() {
                     const std::string url = "https://api.coze.cn/v1/conversation/create";
                     auto res = co_await request::post(url, header_, "");
-                    auto rej = nlohmann::json::parse(res);
-                    if(!rej["code"].is_number_integer() || rej["code"] != 0) {
+                    auto rej = boost::json::parse(res).as_object();
+                    if(!rej.contains("code") || rej.at("code").as_int64() != 0) {
                         BOOST_LOG_TRIVIAL(error) << "CozeV3 create session failed:" << res;
                         co_return "";
                     }
-                    conversation_id_ = rej["data"]["id"];
+                    conversation_id_ = rej.at("data").at("id").as_string();
                     co_return conversation_id_;
                 }
 
-                net::awaitable<void> response(const std::vector<Dialogue>& dialogue, const std::function<void(std::string)>& callback) {
+                net::awaitable<void> response(const std::vector<Dialogue>& dialogue, const std::function<void(std::string_view)>& callback) {
                     std::string query;
                     auto it = std::find_if(dialogue.rbegin(), dialogue.rend(), [](auto& x) {return x.role == "user";});
                     if(it != dialogue.rend()) {
                         query = it->content;
                     }
                     const std::string url = std::format("https://api.coze.cn/v3/chat?conversation_id={}", conversation_id_);
-                    nlohmann::json data = {
+                    boost::json::object data = {
                         {"bot_id", bot_id_},
                         {"user_id", user_id_},
                         {"auto_save_history", true},
@@ -64,7 +68,7 @@ namespace xiaozhi {
                             }
                         }}
                     };
-                    co_await request::stream_post(url, header_, data.dump(), [&callback](const std::string res) {
+                    co_await request::stream_post(url, header_, boost::json::serialize(data), [&callback](const std::string res) {
                         std::vector<std::string> result;
                         boost::split(result, res, boost::is_any_of("\n"));
                         bool is_delta = false;
@@ -76,9 +80,9 @@ namespace xiaozhi {
                                 continue;
                             }
                             if(is_delta && line.starts_with("data:")) {
-                                auto rej = nlohmann::json::parse(line.begin()+5, line.end());
-                                if(rej["role"] == "assistant" && rej["type"] == "answer") {
-                                    callback(rej["content"].get<std::string>());
+                                auto rej = boost::json::parse(std::string_view(line.data() + 5, line.size() - 5)).as_object();
+                                if(rej.contains("role") && rej.contains("type") && rej["role"] == "assistant" && rej["type"] == "answer") {
+                                    callback(rej["content"].as_string());
                                 }
                             }
                         }
@@ -100,7 +104,7 @@ namespace xiaozhi {
             co_return co_await impl_->create_session();
         }
 
-        net::awaitable<void> CozeV3::response(const std::vector<Dialogue>& dialogue, const std::function<void(std::string)>& callback) {
+        net::awaitable<void> CozeV3::response(const std::vector<Dialogue>& dialogue, const std::function<void(std::string_view)>& callback) {
             co_await impl_->response(dialogue, callback);
         }
     }

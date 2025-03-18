@@ -3,6 +3,8 @@
 #include <boost/beast/core/flat_buffer.hpp>
 #include <boost/beast/core/make_printable.hpp>
 #include <boost/beast/http/field.hpp>
+#include <boost/json/object.hpp>
+#include <boost/json/serialize.hpp>
 #include <memory>
 #include <opus/opus_defines.h>
 #include <string>
@@ -13,7 +15,7 @@
 #include <boost/beast/ssl.hpp>
 #include <boost/log/trivial.hpp>
 #include <xz-cpp-server/common/tools.h>
-#include <nlohmann/json.hpp>
+#include <boost/json.hpp>
 #include <ogg/ogg.h>
 #include <opus/opus.h>
 using tcp = net::ip::tcp;
@@ -27,7 +29,7 @@ const std::string path{"/api/v3/tts/bidirection"};
 const bool is_gzip = false; //设置为true返回的也是未压缩的，索性直接不压缩了
 
 // Helper to construct the header as per protocol (big-endian)
-std::vector<uint8_t> make_header(bool json_serialization, bool gzip_compression) {
+static std::vector<uint8_t> make_header(bool json_serialization, bool gzip_compression) {
     std::vector<uint8_t> header(4);
     header[0] = (0x1 << 4) | 0x1; // Protocol version 1, Header size 4 bytes
     header[1] = (0x1 << 4) | 0x4; // Message type and flags
@@ -36,12 +38,12 @@ std::vector<uint8_t> make_header(bool json_serialization, bool gzip_compression)
     return header;
 }
 
-void payload_insert_big_num(std::vector<uint8_t> &data, uint32_t num) {
+static void payload_insert_big_num(std::vector<uint8_t> &data, uint32_t num) {
     data.insert(data.end(), {(uint8_t)(num >> 24), (uint8_t)(num >> 16),
         (uint8_t)(num >> 8), (uint8_t)num});
 }
 
-std::vector<uint8_t> build_payload(int32_t event_code, std::string payload_str, std::string session_id = "") {
+static std::vector<uint8_t> build_payload(int32_t event_code, std::string payload_str, std::string session_id = "") {
     if(is_gzip) {
         payload_str = tools::gzip_compress(payload_str);
     }
@@ -62,7 +64,7 @@ std::vector<uint8_t> build_payload(int32_t event_code, std::string payload_str, 
     return data;
 }
 
-int32_t parser_response_code(const std::string& payload, int header_len=4) {
+static int32_t parser_response_code(const std::string& payload, int header_len=4) {
     uint32_t event_code = *(unsigned int *) (payload.data() + header_len);
     return boost::endian::big_to_native(event_code);
 }
@@ -116,13 +118,13 @@ namespace xiaozhi {
             net::awaitable<bool> connect() {
                 auto [ec, results] = co_await resolver_.async_resolve(host, port, net::as_tuple(net::use_awaitable));
                 if(ec) {
-                    clear("DoubaoASR resolve:", ec);
+                    clear("BytedanceTTSV3 resolve:", ec);
                     co_return false;
                 }
                 tcp::endpoint ep;
                 std::tie(ec, ep) = co_await beast::get_lowest_layer(ws_).async_connect(results, net::as_tuple(net::use_awaitable));
                 if(ec) {
-                    clear("DoubaoASR connect:", ec);
+                    clear("BytedanceTTSV3 connect:", ec);
                     co_return false;
                 }
                 // Set a timeout on the operation
@@ -130,12 +132,12 @@ namespace xiaozhi {
                 if(!SSL_set_tlsext_host_name(ws_.next_layer().native_handle(), host.c_str())) {
                     auto ec = beast::error_code(static_cast<int>(::ERR_get_error()),
                         net::error::get_ssl_category());
-                    clear("DoubaoASR ssl:", ec);
+                    clear("BytedanceTTSV3 ssl:", ec);
                     co_return false;
                 }
                 std::tie(ec) = co_await ws_.next_layer().async_handshake(ssl::stream_base::client, net::as_tuple(net::use_awaitable));
                 if(ec) {
-                    clear("DoubaoASR ssl handshake:", ec);
+                    clear("BytedanceTTSV3 ssl handshake:", ec);
                     co_return false;
                 }
                 beast::get_lowest_layer(ws_).expires_never();
@@ -151,7 +153,7 @@ namespace xiaozhi {
                     }));
                 std::tie(ec) = co_await ws_.async_handshake(host + ':' + port, path, net::as_tuple(net::use_awaitable));
                 if(ec) {
-                    clear("DoubaoASR handshake:", ec);
+                    clear("BytedanceTTSV3 handshake:", ec);
                     co_return false;
                 }
                 co_return true;
@@ -172,7 +174,7 @@ namespace xiaozhi {
             }
 
             net::awaitable<bool> start_session() {
-                nlohmann::json obj = {
+                boost::json::object obj = {
                     {"event", EventCodes::StartSession},
                     {"req_params", {
                         {"speaker", voice_},
@@ -182,7 +184,7 @@ namespace xiaozhi {
                         }}
                     }}
                 };
-                auto data = build_payload(EventCodes::StartSession, obj.dump(), uuid_);
+                auto data = build_payload(EventCodes::StartSession, boost::json::serialize(obj), uuid_);
                 co_await ws_.async_write(net::buffer(data), net::use_awaitable);
 
                 beast::flat_buffer buffer;
@@ -196,13 +198,13 @@ namespace xiaozhi {
             }
 
             net::awaitable<void> task_request(const std::string& text) {
-                nlohmann::json obj = {
+                boost::json::object obj = {
                     {"event", EventCodes::TaskRequest},
                     {"req_params", {
                         {"text", text}
                     }}
                 };
-                auto data = build_payload(EventCodes::TaskRequest, obj.dump(), uuid_);
+                auto data = build_payload(EventCodes::TaskRequest, boost::json::serialize(obj), uuid_);
                 co_await ws_.async_write(net::buffer(data), net::use_awaitable);
 
                 data = build_payload(EventCodes::FinishSession, "{}", uuid_);

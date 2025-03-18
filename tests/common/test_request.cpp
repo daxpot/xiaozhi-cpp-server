@@ -14,7 +14,7 @@ TEST_CASE("request get") {
     std::promise<std::string> promise;
     auto future = promise.get_future();
     net::co_spawn(ioc, [&promise]() -> net::awaitable<void> {
-        nlohmann::json header = {
+        boost::json::object header = {
             {"Content-Type", "application/json"}
         };
         auto ret = co_await request::get("https://echo.websocket.org/test?v=1", header);
@@ -31,7 +31,7 @@ TEST_CASE("request post") {
     std::promise<std::string> promise;
     auto future = promise.get_future();
     net::co_spawn(ioc, [&promise]() -> net::awaitable<void> {
-        nlohmann::json header = {
+        boost::json::object header = {
             {"Content-Type", "application/json"}
         };
         auto ret = co_await request::post("https://echo.websocket.org/test?v=1", header, R"({"test": "value"})");
@@ -51,7 +51,7 @@ TEST_CASE("request stream post") {
     std::promise<std::string> promise;
     auto future = promise.get_future();
     net::co_spawn(ioc, [&promise]() -> net::awaitable<void> {
-        nlohmann::json header = {
+        boost::json::object header = {
             {"Content-Type", "application/json"}
         };
         std::string value;

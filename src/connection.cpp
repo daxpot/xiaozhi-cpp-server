@@ -1,16 +1,13 @@
-#include "nlohmann/json_fwd.hpp"
 #include <boost/asio/co_spawn.hpp>
 #include <boost/asio/registered_buffer.hpp>
 #include <boost/asio/use_awaitable.hpp>
 #include <boost/beast/core/bind_handler.hpp>
 #include <boost/log/trivial.hpp>
 #include <chrono>
-#include <cstdint>
 #include <string>
-#include <vector>
 #include <xz-cpp-server/connection.h>
 #include <xz-cpp-server/common/tools.h>
-#include <nlohmann/json.hpp>
+#include <boost/json.hpp>
 #include <xz-cpp-server/tts/bytedancev3.h>
 
 namespace xiaozhi {
@@ -40,15 +37,15 @@ namespace xiaozhi {
         BOOST_LOG_TRIVIAL(info) << "Connection recv asr text:" << text;
         auto tts = BytedanceV3TTS(executor_);
         ws_.text(true);
-        co_await ws_.async_write(net::buffer("{\"type\":\"tts\",\"state\":\"start\"}"), net::use_awaitable);
+        co_await ws_.async_write(net::buffer(R"({"type":"tts","state":"start"})"), net::use_awaitable);
         auto audio = co_await tts.text_to_speak(text);
         ws_.text(true);
-        nlohmann::json obj = {
+        boost::json::object obj = {
             {"type", "tts"},
             {"state", "sentence_start"},
             {"text", text}
         };
-        co_await ws_.async_write(net::buffer(obj.dump()), net::use_awaitable);
+        co_await ws_.async_write(net::buffer(boost::json::serialize(obj)), net::use_awaitable);
         int error;
         auto decoder_ = opus_decoder_create(16000, 1, &error);
         BOOST_LOG_TRIVIAL(debug) << "opus_decoder_create:" << error;
@@ -57,13 +54,13 @@ namespace xiaozhi {
             co_await ws_.async_write(net::buffer(data), net::use_awaitable);
         }
         ws_.text(true);
-        // co_await ws_.async_write(net::buffer("{\"type\":\"tts\",\"state\":\"stop\"}"), net::use_awaitable);
+        // co_await ws_.async_write(net::buffer(R"({"type":"tts","state":"stop"}")"), net::use_awaitable);
         co_return;
     }
 
     net::awaitable<void> Connection::send_welcome() {
         session_id_ = tools::generate_uuid();
-        std::string welcome_msg_str("{\"type\":\"hello\",\"transport\":\"websocket\",\"audio_params\":{\"sample_rate\":16000}}");
+        std::string welcome_msg_str(R"({"type":"hello","transport":"websocket","audio_params":{"sample_rate":16000}})");
         BOOST_LOG_TRIVIAL(info) << "发送welcome_msg:" << welcome_msg_str;
         ws_.text(true);
         co_await ws_.async_write(net::buffer(std::move(welcome_msg_str)), net::use_awaitable);
@@ -72,7 +69,7 @@ namespace xiaozhi {
     net::awaitable<void> Connection::handle_text(beast::flat_buffer &buffer) {
         auto data_str = boost::beast::buffers_to_string(buffer.data());
         BOOST_LOG_TRIVIAL(info) << "收到文本消息(" << &ws_ << "):" << data_str;
-        auto data = nlohmann::json::parse(data_str);
+        auto data = boost::json::parse(data_str).as_object();
         if(data["type"] == "hello") {
             co_await send_welcome();
         } else if(data["type"] == "listen" && data["state"] == "detect") {

@@ -13,7 +13,7 @@ net::awaitable<void> test() {
     std::vector<xiaozhi::llm::Dialogue> dialogue = {
         {"user", "你好，小智"}
     };
-    co_await llm.response(dialogue, [](const std::string text) {
+    co_await llm.response(dialogue, [](const std::string_view text) {
         BOOST_LOG_TRIVIAL(info) << text;
     });
 }

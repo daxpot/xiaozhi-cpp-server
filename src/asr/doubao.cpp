@@ -6,6 +6,9 @@
 #include <boost/beast/core/flat_buffer.hpp>
 #include <boost/beast/ssl.hpp>
 #include <boost/beast/websocket/rfc6455.hpp>
+#include <boost/json/object.hpp>
+#include <boost/json/serialize.hpp>
+#include <boost/json/value.hpp>
 #include <boost/lockfree/policies.hpp>
 #include <boost/log/trivial.hpp>
 #include <cstdint>
@@ -15,16 +18,17 @@
 #include <string>
 #include <vector>
 #include <xz-cpp-server/asr/doubao.h>
-#include <nlohmann/json.hpp>
 #include <xz-cpp-server/common/tools.h>
 #include <xz-cpp-server/config/setting.h>
 #include <boost/lockfree/spsc_queue.hpp>
+#include <boost/json.hpp>
 #include <ogg/ogg.h>
 
 using tcp = net::ip::tcp;
 namespace ssl = net::ssl;
 namespace websocket = beast::websocket;
 namespace http = beast::http;
+namespace json = boost::json;
 
 const std::string host{"openspeech.bytedance.com"};
 const std::string port{"443"};
@@ -32,7 +36,7 @@ const std::string path{"/api/v2/asr"};
 const bool is_gzip = true;
 
 // Helper to construct the header as per protocol (big-endian)
-std::vector<uint8_t> make_header(uint8_t msg_type, uint8_t flags, bool json_serialization, bool gzip_compression) {
+static std::vector<uint8_t> make_header(uint8_t msg_type, uint8_t flags, bool json_serialization, bool gzip_compression) {
     std::vector<uint8_t> header(4);
     header[0] = (0x1 << 4) | 0x1; // Protocol version 1, Header size 4 bytes
     header[1] = (msg_type << 4) | flags; // Message type and flags
@@ -41,7 +45,7 @@ std::vector<uint8_t> make_header(uint8_t msg_type, uint8_t flags, bool json_seri
     return header;
 }
 
-std::vector<uint8_t> build_payload(uint8_t msg_type, uint8_t flags, std::string payload_str) {
+static std::vector<uint8_t> build_payload(uint8_t msg_type, uint8_t flags, std::string payload_str) {
     if(is_gzip) {
         payload_str = tools::gzip_compress(payload_str);
     }
@@ -55,7 +59,7 @@ std::vector<uint8_t> build_payload(uint8_t msg_type, uint8_t flags, std::string 
     return data;
 }
 
-std::optional<nlohmann::basic_json<>> parse_response(std::string payload, bool gzip_compression) {
+static std::optional<json::object> parse_response(std::string payload, bool gzip_compression) {
     int header_len = (payload[0] & 0x0f) << 2;
     int message_type = (payload[1] & 0xf0) >> 4;
     int message_serial = (payload[2] & 0xf0) >> 4;
@@ -80,7 +84,7 @@ std::optional<nlohmann::basic_json<>> parse_response(std::string payload, bool g
     if(message_compress) {
         payload = tools::gzip_decompress(payload.substr(payload_offset, payload_len));
     }
-    return nlohmann::json::parse(payload);
+    return json::parse(payload).as_object();
 }
 
 // 分段转换并发送 Opus 数据
@@ -292,7 +296,7 @@ namespace xiaozhi {
             }
             net::awaitable<void> send_full_client() {
                 auto uuid = tools::generate_uuid();
-                nlohmann::json obj = {
+                json::value obj = {
                     {"app", {
                             {"appid", appid_},
                             {"token", access_token_},
@@ -319,7 +323,7 @@ namespace xiaozhi {
                         }
                     }
                 };
-                auto data = build_payload(0x1, 0x0, obj.dump());
+                auto data = build_payload(0x1, 0x0, json::serialize(obj));
                 ws_.binary(true);
                 auto [ec, bytes_transferred] = co_await ws_.async_write(net::buffer(data), net::as_tuple(net::use_awaitable));
                 if(ec) {
@@ -333,7 +337,7 @@ namespace xiaozhi {
                     co_return;
                 }
                 auto rej = parse_response(beast::buffers_to_string(buffer.data()), is_gzip);
-                if(rej == std::nullopt || (*rej)["code"] != 1000) {
+                if(rej == std::nullopt || rej->at("code").as_int64() != 1000) {
                     clear();
                     co_return;
                 }
@@ -385,16 +389,16 @@ namespace xiaozhi {
                     co_return;
                 }
                 auto rej = parse_response(beast::buffers_to_string(buffer.data()), is_gzip);
-                if(rej == std::nullopt || (*rej)["code"] != 1000) {
-                    BOOST_LOG_TRIVIAL(error) << "DoubaoASR recv error:" << (rej == std::nullopt ? "" : rej->dump());
+                if(rej == std::nullopt || rej->at("code").as_int64() != 1000) {
+                    BOOST_LOG_TRIVIAL(error) << "DoubaoASR recv error:" << (rej == std::nullopt ? "" : json::serialize(*rej));
                     co_return;
                 }
-                auto& result = (*rej)["result"];
-                if(result.is_array()) {
-                    BOOST_LOG_TRIVIAL(info) << "DoubaoASR detect:" << rej->dump();
+                if(rej->contains("result")) {
+                    auto& result = rej->at("result").as_array();
+                    BOOST_LOG_TRIVIAL(info) << "DoubaoASR detect:" << json::serialize(*rej);
                     std::string sentence;
                     for(const auto &item : result) {
-                        sentence += item["text"].get<std::string>();
+                        sentence += item.at("text").as_string();
                     }
                     if(on_detect_cb_) {
                         on_detect_cb_(std::move(sentence));

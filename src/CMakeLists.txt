@@ -13,6 +13,13 @@ add_target_with_config(common_tools common/tools.cpp)
 target_link_libraries(common_tools PRIVATE Boost::iostreams)
 target_link_libraries(common_tools PRIVATE Boost::random)
 
+#common request
+add_target_with_config(common_request common/request.cpp)
+find_package(OpenSSL REQUIRED)
+target_link_libraries(common_request PUBLIC OpenSSL::SSL)
+target_link_libraries(common_request PUBLIC Boost::log)
+target_link_libraries(common_request PUBLIC Boost::json)
+
 #config setting
 add_target_with_config(config_setting config/setting.cpp)
 target_link_libraries(config_setting PUBLIC yaml-cpp::yaml-cpp)
@@ -28,7 +35,6 @@ add_target_with_config(connection connection.cpp)
 target_link_libraries(connection PUBLIC config_setting)
 target_link_libraries(connection PUBLIC common_tools)
 target_link_libraries(connection PUBLIC vad)
-target_link_libraries(connection PUBLIC nlohmann_json::nlohmann_json)
 target_link_libraries(connection PUBLIC asr_doubao)
 target_link_libraries(connection PUBLIC tts_bytedancev3)
 

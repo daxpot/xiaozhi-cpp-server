@@ -7,7 +7,6 @@
 #include <boost/beast/http/verb.hpp>
 #include <boost/log/trivial.hpp>
 #include <cstddef>
-#include <iostream>
 #include <string_view>
 #include <utility>
 #include <xz-cpp-server/common/request.h>
@@ -60,11 +59,13 @@ namespace request {
         }
         co_return std::move(stream);
     }
-    net::awaitable<void> send(ssl::stream<beast::tcp_stream>& stream, const http::verb method, const UrlInfo& url_info, const nlohmann::basic_json<>& header, const std::string& data) {
+    net::awaitable<void> send(ssl::stream<beast::tcp_stream>& stream, const http::verb method, const UrlInfo& url_info, const json::value& header, const std::string& data) {
         http::request<http::string_body> req{ method, url_info.path, 11 };
         req.set(http::field::host, url_info.host);
-        for(auto& item : header.items()) {
-            req.set(item.key(), item.value());
+        if(header.is_object()) {
+            for(const auto& item : header.as_object()) {
+                req.set(item.key(), item.value().as_string());
+            }
         }
         if(method == http::verb::post) {
             req.body() = data;
@@ -95,7 +96,7 @@ namespace request {
         }
     }
 
-    net::awaitable<std::string> request(const http::verb method, const std::string& url, const nlohmann::basic_json<>& header, const std::string& data) {
+    net::awaitable<std::string> request(const http::verb method, const std::string& url, const json::value& header, const std::string& data) {
         auto url_info = parse_url(url);
         auto stream = co_await connect(url_info);
         co_await send(stream, method, url_info, header, data);
@@ -118,11 +119,11 @@ namespace request {
         co_return ret;
     }
     
-    net::awaitable<std::string> get(const std::string& url, const nlohmann::basic_json<>& header) {
+    net::awaitable<std::string> get(const std::string& url, const json::value& header) {
         co_return co_await request(http::verb::get, url, header);
     }
 
-    net::awaitable<std::string> post(const std::string& url, const nlohmann::basic_json<>& header, const std::string& data) {
+    net::awaitable<std::string> post(const std::string& url, const json::value& header, const std::string& data) {
         co_return co_await request(http::verb::post, url, header, data);
     }
 
@@ -160,7 +161,7 @@ namespace request {
         return {body, is_over};
     }
 
-    net::awaitable<void> stream_post(const std::string& url, const nlohmann::basic_json<>& header, const std::string& data, const std::function<void(std::string)>& callback) {
+    net::awaitable<void> stream_post(const std::string& url, const json::value& header, const std::string& data, const std::function<void(std::string)>& callback) {
         auto url_info = parse_url(url);
         auto stream = co_await connect(url_info);
         co_await send(stream, http::verb::post, url_info, header, data);

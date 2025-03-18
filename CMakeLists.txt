@@ -8,11 +8,9 @@ project(
 )
 
 include_directories("${PROJECT_SOURCE_DIR}/include")
-find_package(Boost COMPONENTS log log_setup iostreams random REQUIRED)
+find_package(Boost COMPONENTS log log_setup iostreams random json REQUIRED)
 
 add_subdirectory(extern/yaml-cpp)
-set(JSON_BuildTests OFF CACHE INTERNAL "")
-add_subdirectory(extern/json)
 add_subdirectory(apps)
 add_subdirectory(src)
 
