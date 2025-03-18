@@ -1,0 +1,11 @@
+add_library(llm_cozev3 cozev3.cpp)
+target_compile_features(llm_cozev3 PUBLIC cxx_std_20)
+set_target_properties(llm_cozev3 PROPERTIES CXX_EXTENSIONS OFF)
+target_link_libraries(llm_cozev3 PUBLIC config_setting)
+target_link_libraries(llm_cozev3 PUBLIC common_request)
+
+add_library(llm_dify dify.cpp)
+target_compile_features(llm_dify PUBLIC cxx_std_20)
+set_target_properties(llm_dify PROPERTIES CXX_EXTENSIONS OFF)
+target_link_libraries(llm_dify PUBLIC config_setting)
+target_link_libraries(llm_dify PUBLIC common_request)

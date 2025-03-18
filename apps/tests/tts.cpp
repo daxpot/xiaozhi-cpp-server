@@ -35,8 +35,8 @@ net::awaitable<void> test() {
     auto executor = co_await net::this_coro::executor;
     auto asr = xiaozhi::BytedanceV3TTS(executor);
     auto audio = co_await asr.text_to_speak("你好小智，我是你的朋友");
-    write_binary_to_file("../tmp/test.opus", audio);
-    std::cout << "test end" << std::endl;
+    // write_binary_to_file("../tmp/test.opus", audio);
+    // std::cout << "test end" << std::endl;
 }
 
 int main() {

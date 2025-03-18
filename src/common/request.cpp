@@ -1,7 +1,15 @@
 #include <boost/asio/as_tuple.hpp>
 #include <boost/asio/awaitable.hpp>
 #include <boost/asio/use_awaitable.hpp>
+#include <boost/beast/core/buffers_to_string.hpp>
+#include <boost/beast/core/flat_buffer.hpp>
+#include <boost/beast/http/fields.hpp>
 #include <boost/beast/http/verb.hpp>
+#include <boost/log/trivial.hpp>
+#include <cstddef>
+#include <iostream>
+#include <string_view>
+#include <utility>
 #include <xz-cpp-server/common/request.h>
 #include <boost/beast.hpp>
 #include <boost/beast/ssl.hpp>
@@ -78,12 +86,12 @@ namespace request {
         if(is_https) {
             auto [ec] = co_await stream.async_shutdown(net::as_tuple(net::use_awaitable));
             if(ec && ec != net::ssl::error::stream_truncated)
-                throw boost::system::system_error(ec, "shutdown");
+                BOOST_LOG_TRIVIAL(error) << "Request shutdown error:" << ec.message();
         } else {
             beast::error_code ec;
             auto r = stream.next_layer().socket().shutdown(net::ip::tcp::socket::shutdown_both, ec);
             if(ec && ec != beast::errc::not_connected)
-                throw boost::system::system_error(ec, "shutdown");
+                BOOST_LOG_TRIVIAL(error) << "Request shutdown error:" << ec.message();
         }
     }
 
@@ -96,11 +104,10 @@ namespace request {
 
         // Declare a container to hold the response
         http::response<http::dynamic_body> res;
-        if(url_info.is_https) {
-            co_await http::async_read(stream, buffer, res, net::use_awaitable);
-        } else {
-            co_await http::async_read(stream.next_layer(), buffer, res, net::use_awaitable);
-        }
+        url_info.is_https
+            ? co_await http::async_read(stream, buffer, res, net::use_awaitable)
+            : co_await http::async_read(stream.next_layer(), buffer, res, net::use_awaitable);
+        
         co_await close(stream, url_info.is_https);
         
         std::string ret;
@@ -119,37 +126,64 @@ namespace request {
         co_return co_await request(http::verb::post, url, header, data);
     }
 
-    net::awaitable<void> stream_request(const http::verb method, const std::string& url, const nlohmann::basic_json<>& header, const std::string& data, std::function<void(std::span<const char>)> callback) {
+    static std::tuple<std::string, bool> parse_chunk(beast::flat_buffer& buffer) {
+        std::string body;
+        std::string_view view(static_cast<const char*>(buffer.data().data()), buffer.data().size());
+        size_t pos = 0;
+        if(view.starts_with("HTTP")) {
+            auto header_end = view.find("\r\n\r\n");
+            if(header_end == std::string_view::npos) {  //header数据不完整
+                return {body, false};
+            }
+            pos = header_end + 4;
+        }
+        bool is_over = false;
+        while (pos < view.size()) {
+            size_t size_end = view.find("\r\n", pos);
+            if (size_end == std::string_view::npos) break;
+    
+            std::string size_str(view.substr(pos, size_end - pos));
+            size_t chunk_size = std::stoul(size_str, nullptr, 16);
+            pos = size_end + 2;
+            if (chunk_size == 0) {
+                is_over = true;
+                break;
+            }
+    
+            if (pos + chunk_size > view.size()) break;
+            body.append(view.substr(pos, chunk_size));
+            pos += chunk_size + 2;
+        }
+    
+        buffer.consume(pos);
+
+        return {body, is_over};
+    }
+
+    net::awaitable<void> stream_post(const std::string& url, const nlohmann::basic_json<>& header, const std::string& data, const std::function<void(std::string)>& callback) {
         auto url_info = parse_url(url);
         auto stream = co_await connect(url_info);
-        co_await send(stream, method, url_info, header, data);
+        co_await send(stream, http::verb::post, url_info, header, data);
 
         beast::flat_buffer buffer;
-        http::response_parser<http::dynamic_body> parser;
-        parser.body_limit( 1 * 1024 * 1024);  //1MB
-        co_await http::async_read_header(stream, buffer, parser, net::use_awaitable);
 
-        while (!parser.is_done()) {
+        while (true) {
             beast::get_lowest_layer(stream).expires_after(std::chrono::seconds(30));
-            auto bytes_transferred = url_info.is_https
-                ? co_await http::async_read_some(stream, buffer, parser, net::use_awaitable)
-                : co_await http::async_read_some(stream.next_layer(), buffer, parser, net::use_awaitable);
-            if (bytes_transferred > 0) {
-                for (auto buf : parser.get().body().data()) {
-                    callback(std::span<const char>(static_cast<const char*>(buf.data()), buf.size()));
-                }
-                parser.get().body().consume(bytes_transferred);
-                buffer.consume(bytes_transferred);
+            auto [ec, bytes_transferred] = url_info.is_https
+                ? co_await stream.async_read_some(buffer.prepare(8192), net::as_tuple(net::use_awaitable))
+                : co_await stream.next_layer().async_read_some( buffer.prepare(8192), net::as_tuple(net::use_awaitable));
+            if(ec) {
+                BOOST_LOG_TRIVIAL(error) << "Stream request read some error:" << ec.message();
+                break;
             }
+            buffer.commit(bytes_transferred);
+            auto [chunk, is_over] = parse_chunk(buffer);
+            if(chunk.size() > 0) {
+                callback(std::move(chunk));
+            }
+            if(is_over)
+                break;
         }
         co_await close(stream, url_info.is_https);
-    }
-
-    net::awaitable<void> stream_get(const std::string& url, const nlohmann::basic_json<>& header, std::function<void(std::span<const char>)> callback) {
-        co_return co_await stream_request(http::verb::get, url, header, "", callback);
-    }
-
-    net::awaitable<void> stream_post(const std::string& url, const nlohmann::basic_json<>& header, const std::string& data, std::function<void(std::span<const char>)> callback) {
-        co_return co_await stream_request(http::verb::post, url, header, data, callback);
     }
 }
