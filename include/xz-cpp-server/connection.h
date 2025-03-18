@@ -8,7 +8,8 @@
 #include <memory>
 #include <boost/asio.hpp>
 #include <boost/beast.hpp>
-#include <xz-cpp-server/asr/doubao.h>
+#include <xz-cpp-server/asr/base.h>
+#include <xz-cpp-server/llm/base.h>
 namespace net = boost::asio;
 namespace beast = boost::beast;
 namespace websocket = boost::beast::websocket;
@@ -23,7 +24,8 @@ namespace xiaozhi {
             net::any_io_executor executor_;
             
             boost::asio::steady_timer silence_timer_;
-            std::shared_ptr<DoubaoASR> asr_ = nullptr;
+            std::unique_ptr<asr::Base> asr_ = nullptr;
+            std::unique_ptr<llm::Base> llm_ = nullptr;
             websocket::stream<beast::tcp_stream> ws_;
 
             void audio_silence_end(const boost::system::error_code& ec);

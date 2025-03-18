@@ -13,7 +13,7 @@ foreach(cpp_file ${cpp_files})
 endforeach()
 
 target_link_libraries(tests_asr PUBLIC config_logger)
-target_link_libraries(tests_asr PUBLIC asr_doubao)
+target_link_libraries(tests_asr PUBLIC asr_bytedancev2)
 
 target_link_libraries(tests_tts PUBLIC config_logger)
 target_link_libraries(tests_tts PUBLIC tts_bytedancev3)

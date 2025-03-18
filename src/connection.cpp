@@ -4,11 +4,14 @@
 #include <boost/beast/core/bind_handler.hpp>
 #include <boost/log/trivial.hpp>
 #include <chrono>
+#include <memory>
 #include <string>
 #include <xz-cpp-server/connection.h>
 #include <xz-cpp-server/common/tools.h>
 #include <boost/json.hpp>
 #include <xz-cpp-server/tts/bytedancev3.h>
+#include <xz-cpp-server/llm/cozev3.h>
+#include <xz-cpp-server/asr/bytedancev2.h>
 
 namespace xiaozhi {
     Connection::Connection(std::shared_ptr<Setting> setting, websocket::stream<beast::tcp_stream> ws, net::any_io_executor executor):
@@ -18,7 +21,7 @@ namespace xiaozhi {
         ws_(std::move(ws)),
         silence_timer_(executor_) {
             min_silence_tms_ = setting->config["VAD"]["SileroVAD"]["min_silence_duration_ms"].as<int>();
-            asr_ = DoubaoASR::createInstance(executor_);
+            asr_ = std::make_unique<asr::BytedanceV2>(executor_, setting->config["ASR"]["DoubaoASR"]);
             // asr_->on_detect(beast::bind_front_handler(&Connection::on_asr_detect, this));
             asr_->on_detect([this](std::string text) {
                 net::co_spawn(executor_, this->on_asr_detect(std::move(text)), [](std::exception_ptr e) {
@@ -31,6 +34,7 @@ namespace xiaozhi {
                     }
                 });
             });
+            llm_ = std::make_unique<llm::CozeV3>(executor_);
     }
 
     net::awaitable<void> Connection::on_asr_detect(std::string text) {
@@ -82,14 +86,13 @@ namespace xiaozhi {
             // BOOST_LOG_TRIVIAL(debug) << "定时器被取消!" << std::endl;
             return;;
         }
-        asr_->send_opus(std::nullopt);
+        asr_->detect_opus(std::nullopt);
     }
 
     net::awaitable<void> Connection::handle_binary(beast::flat_buffer &buffer) {
         if(vad_.is_vad(buffer)) {
             BOOST_LOG_TRIVIAL(debug) << "收到声音(" << &ws_ << "):" << buffer.size();
-            asr_->connect();
-            asr_->send_opus(std::move(buffer));
+            asr_->detect_opus(std::move(buffer));
             silence_timer_.cancel();
             silence_timer_.expires_after(std::chrono::milliseconds(min_silence_tms_));
             silence_timer_.async_wait(beast::bind_front_handler(&Connection::audio_silence_end, this));
@@ -105,10 +108,8 @@ namespace xiaozhi {
             beast::flat_buffer buffer;
             auto [ec, _] = co_await ws_.async_read(buffer, net::as_tuple(net::use_awaitable));
             if(ec == websocket::error::closed) {
-                asr_->close();
                 co_return;
             } else if(ec) {
-                asr_->close();
                 throw boost::system::system_error(ec);
             }
             if(ws_.got_text()) {
