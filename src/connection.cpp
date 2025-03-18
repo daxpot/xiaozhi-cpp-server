@@ -1,3 +1,4 @@
+#include "xz-cpp-server/llm/base.h"
 #include <boost/asio/co_spawn.hpp>
 #include <boost/asio/registered_buffer.hpp>
 #include <boost/asio/use_awaitable.hpp>
@@ -9,9 +10,9 @@
 #include <xz-cpp-server/connection.h>
 #include <xz-cpp-server/common/tools.h>
 #include <boost/json.hpp>
-#include <xz-cpp-server/tts/bytedancev3.h>
-#include <xz-cpp-server/llm/cozev3.h>
-#include <xz-cpp-server/asr/bytedancev2.h>
+#include <xz-cpp-server/tts/base.h>
+#include <xz-cpp-server/llm/base.h>
+#include <xz-cpp-server/asr/base.h>
 
 namespace xiaozhi {
     Connection::Connection(std::shared_ptr<Setting> setting, websocket::stream<beast::tcp_stream> ws, net::any_io_executor executor):
@@ -21,7 +22,7 @@ namespace xiaozhi {
         ws_(std::move(ws)),
         silence_timer_(executor_) {
             min_silence_tms_ = setting->config["VAD"]["SileroVAD"]["min_silence_duration_ms"].as<int>();
-            asr_ = std::make_unique<asr::BytedanceV2>(executor_, setting->config["ASR"]["DoubaoASR"]);
+            asr_ = asr::createASR(executor_);
             // asr_->on_detect(beast::bind_front_handler(&Connection::on_asr_detect, this));
             asr_->on_detect([this](std::string text) {
                 net::co_spawn(executor_, this->on_asr_detect(std::move(text)), [](std::exception_ptr e) {
@@ -34,15 +35,15 @@ namespace xiaozhi {
                     }
                 });
             });
-            llm_ = std::make_unique<llm::CozeV3>(executor_);
+            llm_ = llm::createLLM(executor_);
     }
 
     net::awaitable<void> Connection::on_asr_detect(std::string text) {
         BOOST_LOG_TRIVIAL(info) << "Connection recv asr text:" << text;
-        auto tts = BytedanceV3TTS(executor_);
+        auto tts = tts::createTTS(executor_);
         ws_.text(true);
         co_await ws_.async_write(net::buffer(R"({"type":"tts","state":"start"})"), net::use_awaitable);
-        auto audio = co_await tts.text_to_speak(text);
+        auto audio = co_await tts->text_to_speak(text);
         ws_.text(true);
         boost::json::object obj = {
             {"type", "tts"},

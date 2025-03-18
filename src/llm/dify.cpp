@@ -18,9 +18,9 @@ namespace xiaozhi {
                 const std::string api_key_;
                 boost::json::object header_;
             public:
-                Impl(std::shared_ptr<Setting> setting, net::any_io_executor &executor):
-                    base_url_(setting->config["LLM"]["DifyLLM"]["base_url"].as<std::string>()),
-                    api_key_(setting->config["LLM"]["DifyLLM"]["api_key"].as<std::string>()),
+                Impl(const net::any_io_executor &executor, const YAML::Node& config):
+                    base_url_(config["base_url"].as<std::string>()),
+                    api_key_(config["api_key"].as<std::string>()),
                     header_({
                         {"Authorization", std::format("Bearer {}", api_key_)},
                         {"Content-Type", "application/json"},
@@ -65,9 +65,8 @@ namespace xiaozhi {
                 
         };
 
-        Dify::Dify(net::any_io_executor &executor) {
-            auto setting = Setting::getSetting();
-            impl_ = std::make_unique<Impl>(setting, executor);
+        Dify::Dify(net::any_io_executor &executor, const YAML::Node& config) {
+            impl_ = std::make_unique<Impl>(executor, config);
         }
 
         Dify::~Dify() {

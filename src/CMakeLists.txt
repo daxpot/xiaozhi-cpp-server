@@ -35,9 +35,9 @@ add_target_with_config(connection connection.cpp)
 target_link_libraries(connection PUBLIC config_setting)
 target_link_libraries(connection PUBLIC common_tools)
 target_link_libraries(connection PUBLIC vad)
-target_link_libraries(connection PUBLIC asr_bytedancev2)
-target_link_libraries(connection PUBLIC tts_bytedancev3)
-target_link_libraries(connection PUBLIC llm_cozev3)
+target_link_libraries(connection PUBLIC asr)
+target_link_libraries(connection PUBLIC tts)
+target_link_libraries(connection PUBLIC llm)
 
 #server library
 add_target_with_config(server server.cpp)

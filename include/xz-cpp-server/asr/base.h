@@ -1,6 +1,5 @@
 #pragma once
 #include <boost/beast.hpp>
-#include <yaml-cpp/yaml.h>
 namespace net = boost::asio;
 namespace beast = boost::beast;
 
@@ -12,6 +11,6 @@ namespace xiaozhi {
                 virtual void detect_opus(const std::optional<beast::flat_buffer>& buf) = 0;
                 virtual void on_detect(const std::function<void(std::string)>& callback) = 0;
         };
-        std::unique_ptr<Base> createASR(net::any_io_executor& executor, const YAML::Node& config);
+        std::unique_ptr<Base> createASR(const net::any_io_executor& executor);
     }
 }

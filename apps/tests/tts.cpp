@@ -1,5 +1,7 @@
+#include <boost/asio/co_spawn.hpp>
+#include <boost/asio/io_context.hpp>
 #include <iostream>
-#include <xz-cpp-server/tts/bytedancev3.h>
+#include <xz-cpp-server/tts/base.h>
 #include <xz-cpp-server/config/logger.h>
 #include <iostream>
 #include <fstream>
@@ -33,8 +35,8 @@ bool write_binary_to_file(const std::string& filename, const std::vector<std::st
 
 net::awaitable<void> test() {
     auto executor = co_await net::this_coro::executor;
-    auto asr = xiaozhi::BytedanceV3TTS(executor);
-    auto audio = co_await asr.text_to_speak("你好小智，我是你的朋友");
+    auto asr = xiaozhi::tts::createTTS(executor);
+    auto audio = co_await asr->text_to_speak("你好小智，我是你的朋友");
     // write_binary_to_file("../tmp/test.opus", audio);
     // std::cout << "test end" << std::endl;
 }

@@ -27,11 +27,11 @@ namespace xiaozhi {
                 // std::string access_token_;
                 boost::json::object header_;
             public:
-                Impl(std::shared_ptr<Setting> setting, net::any_io_executor &executor):
-                    bot_id_(setting->config["LLM"]["CozeLLMV3"]["bot_id"].as<std::string>()),
-                    user_id_(setting->config["LLM"]["CozeLLMV3"]["user_id"].as<std::string>()),
+                Impl(const net::any_io_executor &executor, const YAML::Node& config):
+                    bot_id_(config["bot_id"].as<std::string>()),
+                    user_id_(config["user_id"].as<std::string>()),
                     header_({
-                        {"Authorization", std::format("Bearer {}", setting->config["LLM"]["CozeLLMV3"]["personal_access_token"].as<std::string>())},
+                        {"Authorization", std::format("Bearer {}", config["personal_access_token"].as<std::string>())},
                         {"Content-Type", "application/json"},
                         {"Connection", "keep-alive"}
                     }) {
@@ -91,9 +91,8 @@ namespace xiaozhi {
                 
         };
 
-        CozeV3::CozeV3(net::any_io_executor &executor) {
-            auto setting = Setting::getSetting();
-            impl_ = std::make_unique<Impl>(setting, executor);
+        CozeV3::CozeV3(const net::any_io_executor &executor, const YAML::Node& config) {
+            impl_ = std::make_unique<Impl>(executor, config);
         }
 
         CozeV3::~CozeV3() {

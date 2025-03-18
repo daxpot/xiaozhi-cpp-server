@@ -1,15 +1,17 @@
+#include <boost/asio/awaitable.hpp>
 #include <boost/asio/buffer.hpp>
+#include <boost/asio/co_spawn.hpp>
+#include <boost/asio/use_awaitable.hpp>
 #include <boost/log/trivial.hpp>
 #include <xz-cpp-server/config/setting.h>
-#include <iostream>
-#include <xz-cpp-server/asr/bytedancev2.h>
+#include <xz-cpp-server/asr/base.h>
 #include <xz-cpp-server/config/logger.h>
 
 net::awaitable<void> test() {
     auto executor = co_await net::this_coro::executor;
     auto setting = xiaozhi::Setting::getSetting();
-    auto asr = xiaozhi::asr::BytedanceV2(executor, setting->config["ASR"]["DoubaoASR"]);
-    asr.detect_opus(std::nullopt);
+    auto asr = xiaozhi::asr::createASR(executor);
+    asr->detect_opus(std::nullopt);
     net::steady_timer timer1(executor, std::chrono::milliseconds(1000));
     co_await timer1.async_wait(net::use_awaitable);
 
@@ -20,8 +22,8 @@ net::awaitable<void> test() {
     net::buffer_copy(writable, net::buffer(data)); // 复制数据
     buffer.commit(data.size()); // 提交数据
 
-    asr.detect_opus(buffer);
-    asr.detect_opus(std::nullopt);
+    asr->detect_opus(buffer);
+    asr->detect_opus(std::nullopt);
     net::steady_timer timer2(executor, std::chrono::milliseconds(1000));
     co_await timer2.async_wait(net::use_awaitable);
     BOOST_LOG_TRIVIAL(info) << "test end";

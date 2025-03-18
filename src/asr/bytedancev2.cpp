@@ -358,7 +358,7 @@ namespace xiaozhi {
                     }
                 }
             public:
-                Impl(net::any_io_executor& executor, YAML::Node& config):
+                Impl(const net::any_io_executor& executor, const YAML::Node& config):
                     appid_(config["appid"].as<std::string>()),
                     access_token_(config["access_token"].as<std::string>()),
                     cluster_(config["cluster"].as<std::string>()),
@@ -396,7 +396,7 @@ namespace xiaozhi {
                 }
         };
 
-        BytedanceV2::BytedanceV2(net::any_io_executor& executor, YAML::Node config) {
+        BytedanceV2::BytedanceV2(const net::any_io_executor& executor, const YAML::Node& config) {
             impl_ = std::make_unique<Impl>(executor, config);
         }
         
