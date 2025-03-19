@@ -6,7 +6,7 @@
 #include <xz-cpp-server/common/tools.h>
 #include <boost/log/trivial.hpp>
 #include <ogg/ogg.h>
-#include <boost/lockfree/spsc_queue.hpp>
+#include <xz-cpp-server/common/threadsafe_queue.hpp>
 #include <boost/beast/ssl.hpp>
 
 using tcp = net::ip::tcp;
@@ -185,7 +185,7 @@ namespace xiaozhi {
                 std::unique_ptr<wss_stream> ws_;
                 std::unique_ptr<OggOpusStreamer> ogg_streamer_;
                 
-                boost::lockfree::spsc_queue<std::optional<beast::flat_buffer>, boost::lockfree::capacity<128>> queue;
+                ThreadSafeQueue<std::optional<beast::flat_buffer>> queue;
                 std::function<void(std::string)> on_detect_cb_;
 
                 void clear(std::string_view title, beast::error_code ec=beast::error_code{}) {
@@ -297,7 +297,7 @@ namespace xiaozhi {
                     }
                     while(!is_released_) {
                         std::optional<beast::flat_buffer> buf;
-                        if(!queue.pop(buf)) {
+                        if(!queue.try_pop(buf)) {
                             net::steady_timer timer(executor_, std::chrono::milliseconds(60));
                             co_await timer.async_wait(net::use_awaitable);
                             continue;
@@ -383,16 +383,12 @@ namespace xiaozhi {
                     is_released_ = true;
                 }
 
-                void detect_opus(const std::optional<beast::flat_buffer>& buf) {
-                    if(queue.write_available()) {
-                        queue.push(std::move(buf));
-                    } else {
-                        BOOST_LOG_TRIVIAL(info) << "BytedanceASRV2 queue not write available:";
-                    }
+                void detect_opus(std::optional<beast::flat_buffer> buf) {
+                    queue.push(std::move(buf));
                 }
 
                 void on_detect(const std::function<void(std::string)>& callback) {
-                    on_detect_cb_ = std::move(callback);
+                    on_detect_cb_ = callback;
                 }
         };
 
@@ -404,8 +400,8 @@ namespace xiaozhi {
 
         }
 
-        void BytedanceV2::detect_opus(const std::optional<beast::flat_buffer>& buf) {
-            return impl_->detect_opus(buf);
+        void BytedanceV2::detect_opus(std::optional<beast::flat_buffer> buf) {
+            return impl_->detect_opus(std::move(buf));
         }
 
         void BytedanceV2::on_detect(const std::function<void(std::string)>& callback) {

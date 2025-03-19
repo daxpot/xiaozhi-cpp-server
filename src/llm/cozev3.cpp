@@ -24,7 +24,6 @@ namespace xiaozhi {
                 std::string conversation_id_;
                 std::string bot_id_;
                 std::string user_id_;
-                // std::string access_token_;
                 boost::json::object header_;
             public:
                 Impl(const net::any_io_executor &executor, const YAML::Node& config):

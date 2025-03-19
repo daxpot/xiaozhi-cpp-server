@@ -1,5 +1,7 @@
 #pragma once
+#include <atomic>
 #include <boost/asio/awaitable.hpp>
+#include <vector>
 #include <xz-cpp-server/config/setting.h>
 #include <xz-cpp-server/silero_vad/vad.h>
 #include <boost/asio/any_io_executor.hpp>
@@ -10,6 +12,7 @@
 #include <boost/beast.hpp>
 #include <xz-cpp-server/asr/base.h>
 #include <xz-cpp-server/llm/base.h>
+#include <xz-cpp-server/common/threadsafe_queue.hpp>
 namespace net = boost::asio;
 namespace beast = boost::beast;
 namespace websocket = boost::beast::websocket;
@@ -17,11 +20,14 @@ namespace websocket = boost::beast::websocket;
 namespace xiaozhi {
     class Connection: public std::enable_shared_from_this<Connection> {
         private:
+            std::atomic<bool> is_released_ = false;
             int min_silence_tms_ = 700;
             std::shared_ptr<Setting> setting_ = nullptr;
             std::string session_id_;
             Vad vad_;
             net::any_io_executor executor_;
+            std::vector<llm::Dialogue> dialogue_;
+            ThreadSafeQueue<std::string> llm_response_;
             
             boost::asio::steady_timer silence_timer_;
             std::unique_ptr<asr::Base> asr_ = nullptr;
@@ -33,8 +39,11 @@ namespace xiaozhi {
             net::awaitable<void> handle_text(beast::flat_buffer &buffer);
             net::awaitable<void> handle_binary(beast::flat_buffer &buffer);
             net::awaitable<void> send_welcome();
+
+            net::awaitable<void> tts_loop();
         public:
             Connection(std::shared_ptr<Setting> setting, websocket::stream<beast::tcp_stream> ws, net::any_io_executor executor);
+            ~Connection();
             net::awaitable<void> handle();
     };
 }

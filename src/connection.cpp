@@ -1,4 +1,3 @@
-#include "xz-cpp-server/llm/base.h"
 #include <boost/asio/co_spawn.hpp>
 #include <boost/asio/registered_buffer.hpp>
 #include <boost/asio/use_awaitable.hpp>
@@ -30,37 +29,69 @@ namespace xiaozhi {
                         try {
                             std::rethrow_exception(e);
                         } catch(std::exception& e) {
-                            BOOST_LOG_TRIVIAL(error) << "Connect asr detect spawn error:" << e.what();
+                            BOOST_LOG_TRIVIAL(error) << "Connection asr detect spawn error:" << e.what();
                         }
                     }
                 });
             });
             llm_ = llm::createLLM(executor_);
+            net::co_spawn(executor_, tts_loop(), [](std::exception_ptr e) {
+                if(e) {
+                    try {
+                        std::rethrow_exception(e);
+                    } catch(std::exception& e) {
+                        BOOST_LOG_TRIVIAL(error) << "Connection tts loop error:" << e.what();
+                    }
+                }
+            });
+    }
+
+    net::awaitable<void> Connection::tts_loop() {
+        while(!is_released_) {
+            std::string text;
+            if(!llm_response_.try_pop(text)) {
+                net::steady_timer timer(executor_, std::chrono::milliseconds(60));
+                co_await timer.async_wait(net::use_awaitable);
+                continue;
+            }
+            BOOST_LOG_TRIVIAL(debug) << "获取大模型输出:" << text;
+            auto tts = tts::createTTS(executor_);
+            ws_.text(true);
+            co_await ws_.async_write(net::buffer(R"({"type":"tts","state":"start"})"), net::use_awaitable);
+            auto audio = co_await tts->text_to_speak(text);
+            ws_.text(true);
+            boost::json::object obj = {
+                {"type", "tts"},
+                {"state", "sentence_start"},
+                {"text", text}
+            };
+            co_await ws_.async_write(net::buffer(boost::json::serialize(obj)), net::use_awaitable);
+            for(auto& data: audio) {
+                ws_.binary(true);
+                co_await ws_.async_write(net::buffer(data), net::use_awaitable);
+            }
+            ws_.text(true);
+            // co_await ws_.async_write(net::buffer(R"({"type":"tts","state":"stop"}")"), net::use_awaitable);
+        }
     }
 
     net::awaitable<void> Connection::on_asr_detect(std::string text) {
         BOOST_LOG_TRIVIAL(info) << "Connection recv asr text:" << text;
-        auto tts = tts::createTTS(executor_);
-        ws_.text(true);
-        co_await ws_.async_write(net::buffer(R"({"type":"tts","state":"start"})"), net::use_awaitable);
-        auto audio = co_await tts->text_to_speak(text);
-        ws_.text(true);
-        boost::json::object obj = {
-            {"type", "tts"},
-            {"state", "sentence_start"},
-            {"text", text}
-        };
-        co_await ws_.async_write(net::buffer(boost::json::serialize(obj)), net::use_awaitable);
-        int error;
-        auto decoder_ = opus_decoder_create(16000, 1, &error);
-        BOOST_LOG_TRIVIAL(debug) << "opus_decoder_create:" << error;
-        for(auto& data: audio) {
-            ws_.binary(true);
-            co_await ws_.async_write(net::buffer(data), net::use_awaitable);
+        dialogue_.push_back({"user", text});
+        std::string message;
+        size_t pos = 0;
+        co_await llm_->response(dialogue_, [this, &message, &pos](std::string_view res) {
+            message.append(res.data(), res.size());
+            auto p = tools::find_last_segment(message);
+            if(p != message.npos && p - pos + 1 > 6) {
+                llm_response_.push(message.substr(pos, p-pos+1));
+                pos = p+1;
+            }
+        });
+        if(pos < message.size()) {
+            llm_response_.push(message.substr(pos));
         }
-        ws_.text(true);
-        // co_await ws_.async_write(net::buffer(R"({"type":"tts","state":"stop"}")"), net::use_awaitable);
-        co_return;
+        dialogue_.push_back({"assistant", message});
     }
 
     net::awaitable<void> Connection::send_welcome() {
@@ -119,5 +150,9 @@ namespace xiaozhi {
                 co_await handle_binary(buffer);
             }
         }
+    }
+
+    Connection::~Connection() {
+        is_released_ = true;
     }
 }

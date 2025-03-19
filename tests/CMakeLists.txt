@@ -21,3 +21,4 @@ endforeach()
 
 target_link_libraries(config_test_setting PUBLIC config_setting)
 target_link_libraries(common_test_request PUBLIC common_request)
+target_link_libraries(test_find_last_segment PUBLIC common_tools)

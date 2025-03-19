@@ -5,6 +5,7 @@
 #include <boost/beast/http/field.hpp>
 #include <boost/json/object.hpp>
 #include <boost/json/serialize.hpp>
+#include <cstddef>
 #include <memory>
 #include <opus/opus_defines.h>
 #include <string>
@@ -96,6 +97,11 @@ namespace xiaozhi {
                 std::string access_token_;
                 std::string voice_;
                 std::string uuid_;
+                int sample_rate_;
+                // 解码 3 个 320 样本帧到 PCM
+                int samples_decoded_ = 0;
+                int frame_size_ = 960;  //=sample_rate_ / 100 * 60ms
+                std::vector<int16_t> pcm_; // 目标缓冲区
 
                 net::any_io_executor executor_; //需要比resolver和ws先初始化，所以申明在前面
                 tcp::resolver resolver_;
@@ -180,7 +186,7 @@ namespace xiaozhi {
                             {"speaker", voice_},
                             {"audio_params", {
                                 {"format", "ogg_opus"},
-                                {"sample_rate", 16000}
+                                {"sample_rate", sample_rate_}
                             }}
                         }}
                     };
@@ -279,67 +285,63 @@ namespace xiaozhi {
                     return opus_packets;
                 }
 
-                std::vector<std::vector<uint8_t>> convert_to_960_frames(const std::vector<std::vector<uint8_t>>& opus_packets_320) {
-                    std::vector<std::vector<uint8_t>> opus_packets_960;
+                std::vector<std::vector<uint8_t>> convert_to_60ms_frames(const std::vector<std::vector<uint8_t>>& opus_packets_source) {
+                    std::vector<std::vector<uint8_t>> opus_packets_target;
                 
                     // 初始化 Opus 解码器 (16kHz, 单声道)
                     int error;
-                    OpusDecoder* decoder = opus_decoder_create(16000, 1, &error);
+                    OpusDecoder* decoder = opus_decoder_create(sample_rate_, 1, &error);
                     if (error != OPUS_OK) {
                         BOOST_LOG_TRIVIAL(error) << "BytedanceTTSV3 failed to create opus decoder:" << opus_strerror(error);
-                        return opus_packets_960;
+                        return opus_packets_target;
                     }
                 
                     // 初始化 Opus 编码器 (16kHz, 单声道)
-                    OpusEncoder* encoder = opus_encoder_create(16000, 1, OPUS_APPLICATION_AUDIO, &error);
+                    OpusEncoder* encoder = opus_encoder_create(sample_rate_, 1, OPUS_APPLICATION_AUDIO, &error);
                     if (error != OPUS_OK) {
                         BOOST_LOG_TRIVIAL(error) << "BytedanceTTSV3 failed to create opus encoder:" << opus_strerror(error);
                         opus_decoder_destroy(decoder);
-                        return opus_packets_960;
+                        return opus_packets_target;
                     }
                 
-                    // 每 3 个 320 样本帧合并为一个 960 样本帧
-                    for (size_t i = 0; i + 2 < opus_packets_320.size(); i += 3) {
-                        // 解码 3 个 320 样本帧到 PCM
-                        std::vector<int16_t> pcm_960(960); // 目标缓冲区
-                        int samples_decoded = 0;
-                
-                        for (int j = 0; j < 3 && i + j < opus_packets_320.size(); ++j) {
-                            const auto& packet = opus_packets_320[i + j];
-                            int frame_size = opus_decode(decoder, packet.data(), packet.size(), 
-                                                        pcm_960.data() + samples_decoded, 320, 0);
-                            if (frame_size < 0) { 
-                                BOOST_LOG_TRIVIAL(error) << "BytedanceTTSV3 opus decode failed:" << opus_strerror(frame_size);
+                    size_t i = 0;
+                    while(i < opus_packets_source.size()) {
+                        while(i < opus_packets_source.size() && samples_decoded_ < frame_size_) {
+                            const auto& packet = opus_packets_source[i++];
+                            auto origin_frame_size = opus_packet_get_samples_per_frame(packet.data(), sample_rate_);
+                            int decoded_frame_size = opus_decode(decoder, packet.data(), packet.size(), 
+                                                        pcm_.data() + samples_decoded_, origin_frame_size, 0);
+                            if (decoded_frame_size < 0) { 
+                                BOOST_LOG_TRIVIAL(error) << "BytedanceTTSV3 opus decode failed:" << opus_strerror(decoded_frame_size);
                                 break;
                             }
-                            samples_decoded += frame_size; // 通常是 320
+                            samples_decoded_ += decoded_frame_size; // 通常是 320
                         }
                 
-                        if (samples_decoded != 960) {
-                            BOOST_LOG_TRIVIAL(error) << "BytedanceTTSV3 not enough samples decoded:" << samples_decoded;
+                        if (samples_decoded_ != frame_size_) {
                             continue;
                         }
-                
-                        // 编码为 960 样本的 Opus 数据包
-                        std::vector<uint8_t> opus_packet_960(1275); // 最大缓冲区大小
-                        int bytes_written = opus_encode(encoder, pcm_960.data(), 960, 
-                                                    opus_packet_960.data(), opus_packet_960.size());
+                        samples_decoded_ = 0; //重新进入下一轮
+                        // 编码为 frame_size_ 样本的 Opus 数据包
+                        std::vector<uint8_t> opus_packet_target(frame_size_); // 最大缓冲区大小
+                        int bytes_written = opus_encode(encoder, pcm_.data(), frame_size_, 
+                                                    opus_packet_target.data(), opus_packet_target.size());
                         if (bytes_written < 0) {
                             BOOST_LOG_TRIVIAL(error) << "BytedanceTTSV3 opus encode failed:" << opus_strerror(bytes_written);
                             continue;
                         }
                 
-                        opus_packet_960.resize(bytes_written);
-                        opus_packets_960.push_back(std::move(opus_packet_960));
+                        opus_packet_target.resize(bytes_written);
+                        opus_packets_target.push_back(std::move(opus_packet_target));
                     }
                 
                     // 清理
                     opus_decoder_destroy(decoder);
                     opus_encoder_destroy(encoder);
-                    return opus_packets_960;
+                    return opus_packets_target;
                 }
             public:
-                Impl(const net::any_io_executor& executor, const YAML::Node& config):
+                Impl(const net::any_io_executor& executor, const YAML::Node& config, int sample_rate):
                     executor_(executor),
                     appid_(config["appid"].as<std::string>()),
                     access_token_(config["access_token"].as<std::string>()),
@@ -347,6 +349,8 @@ namespace xiaozhi {
                     resolver_(executor_),
                     ctx_(ssl::context::sslv23_client),
                     ws_(executor_, ctx_),
+                    sample_rate_(sample_rate),
+                    pcm_(sample_rate / 100 * 60),
                     uuid_(tools::generate_uuid()) {
                         ctx_.set_verify_mode(ssl::verify_peer);
                         ctx_.set_default_verify_paths();
@@ -386,9 +390,27 @@ namespace xiaozhi {
                             // BOOST_LOG_TRIVIAL(debug) << "header:" << data.substr(0, 16+session_id_len);
                             // BOOST_LOG_TRIVIAL(debug) << "response:" << data.substr(16+session_id_len);
                             // audio.push_back(data.substr(16+session_id_len));
-                            auto opus_packets_320 = extract_opus_packets(data.substr(16+session_id_len));
-                            auto opus_packets_960 = convert_to_960_frames(opus_packets_320);
-                            audio.insert(audio.end(), opus_packets_960.begin(), opus_packets_960.end());
+                            auto opus_packets_source = extract_opus_packets(data.substr(16+session_id_len));
+                            auto opus_packets_target = convert_to_60ms_frames(opus_packets_source);
+                            audio.insert(audio.end(), opus_packets_target.begin(), opus_packets_target.end());
+                        }
+                    }
+                    if(samples_decoded_ > 0 && samples_decoded_ != frame_size_) {
+                        int error;
+                        OpusEncoder* encoder = opus_encoder_create(sample_rate_, 1, OPUS_APPLICATION_AUDIO, &error);
+                        if (error != OPUS_OK) {
+                            BOOST_LOG_TRIVIAL(error) << "BytedanceTTSV3 last frame been dropped, because failed to create opus encoder:" << opus_strerror(error);
+                        } else {
+                            pcm_.resize(samples_decoded_);
+                            std::vector<uint8_t> opus_packet_target(frame_size_); // 最大缓冲区大小
+                            int bytes_written = opus_encode(encoder, pcm_.data(), samples_decoded_, 
+                                                        opus_packet_target.data(), opus_packet_target.size());
+                            if (bytes_written < 0) {
+                                BOOST_LOG_TRIVIAL(error) << "BytedanceTTSV3 last frame been dropped, because opus encode failed:" << opus_strerror(bytes_written);
+                            }
+                            opus_packet_target.resize(bytes_written);
+                            opus_encoder_destroy(encoder);
+                            audio.push_back(opus_packet_target);
                         }
                     }
                     co_await finish_connection();
@@ -396,8 +418,8 @@ namespace xiaozhi {
                 }
         };
         
-        BytedanceV3::BytedanceV3(const net::any_io_executor& executor, const YAML::Node& config) {
-            impl_ = std::make_unique<Impl>(executor, config);
+        BytedanceV3::BytedanceV3(const net::any_io_executor& executor, const YAML::Node& config, int sample_rate) {
+            impl_ = std::make_unique<Impl>(executor, config, sample_rate);
         }
 
         BytedanceV3::~BytedanceV3() = default;

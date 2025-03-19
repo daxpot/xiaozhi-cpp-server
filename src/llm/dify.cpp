@@ -45,7 +45,10 @@ namespace xiaozhi {
                         {"user", "143523"},
                         {"inputs", boost::json::object({})}
                     };
-                    co_await request::stream_post(url, header_, boost::json::serialize(data), [&callback](std::string res) {
+                    if(!conversation_id_.empty()) {
+                        data["conversation_id"] = conversation_id_;
+                    }
+                    co_await request::stream_post(url, header_, boost::json::serialize(data), [&callback, this](std::string res) {
                         std::vector<std::string> result;
                         boost::split(result, res, boost::is_any_of("\n"));
                         for(auto& line : result) {
@@ -53,6 +56,9 @@ namespace xiaozhi {
                                 continue;
                             if(line.starts_with("data:")) {
                                 auto rej = boost::json::parse(std::string_view(line.data() + 5, line.size() - 5)).as_object();
+                                if(conversation_id_.empty() && rej.contains("conversation_id")) {
+                                    conversation_id_ = rej["conversation_id"].as_string();
+                                }
                                 if(rej.at("event") == "error") {
                                     BOOST_LOG_TRIVIAL(error) << "Dify api error:" << line;
                                 } else if(rej.contains("answer")) {
