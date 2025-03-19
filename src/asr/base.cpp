@@ -6,7 +6,12 @@ namespace xiaozhi {
     namespace asr {
         std::unique_ptr<Base> createASR(const net::any_io_executor& executor) {
             auto setting = Setting::getSetting();
-            return std::make_unique<BytedanceV2>(executor, setting->config["ASR"]["DoubaoASR"]);
+            auto selected_module = setting->config["selected_module"]["ASR"].as<std::string>();
+            if(selected_module == "BytedanceASRV2") {
+                return std::make_unique<BytedanceV2>(executor, setting->config["ASR"][selected_module]);
+            } else {
+                throw std::invalid_argument("Selected_module ASR not be supported");
+            }
         }
     }
 }

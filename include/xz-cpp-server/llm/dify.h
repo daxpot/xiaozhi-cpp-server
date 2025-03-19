@@ -6,7 +6,7 @@ namespace xiaozhi {
     namespace llm {
         class Dify: public Base {
             public:
-                Dify(net::any_io_executor &executor, const YAML::Node& config);
+                Dify(const net::any_io_executor &executor, const YAML::Node& config);
                 ~Dify();
                 net::awaitable<std::string> create_session() override;
                 net::awaitable<void> response(const std::vector<Dialogue>& dialogue, const std::function<void(std::string_view)>& callback) override;

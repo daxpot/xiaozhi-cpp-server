@@ -6,7 +6,12 @@ namespace xiaozhi {
     namespace tts {
         std::unique_ptr<Base> createTTS(const net::any_io_executor& executor) {
             auto setting = Setting::getSetting();
-            return std::make_unique<BytedanceV3>(executor, setting->config["TTS"]["BytedanceTTS"]);
+            auto selected_module = setting->config["selected_module"]["TTS"].as<std::string>();
+            if(selected_module == "BytedanceTTSV3") {
+                return std::make_unique<BytedanceV3>(executor, setting->config["TTS"][selected_module]);
+            } else {
+                throw std::invalid_argument("Selected_module TTS not be supported");
+            }
         }
     }
 }

@@ -65,7 +65,7 @@ namespace xiaozhi {
                 
         };
 
-        Dify::Dify(net::any_io_executor &executor, const YAML::Node& config) {
+        Dify::Dify(const net::any_io_executor &executor, const YAML::Node& config) {
             impl_ = std::make_unique<Impl>(executor, config);
         }
 
