@@ -5,6 +5,7 @@
 #include <boost/log/trivial.hpp>
 #include <chrono>
 #include <memory>
+#include <queue>
 #include <string>
 #include <xz-cpp-server/connection.h>
 #include <xz-cpp-server/common/tools.h>
@@ -47,32 +48,55 @@ namespace xiaozhi {
     }
 
     net::awaitable<void> Connection::tts_loop() {
+        long long tts_stop_end_timestamp = 0;
+        std::queue<std::pair<std::string, long long>> tts_sentence_queue;
         while(!is_released_) {
             std::string text;
+            auto now = tools::get_tms();
             if(!llm_response_.try_pop(text)) {
                 net::steady_timer timer(executor_, std::chrono::milliseconds(60));
                 co_await timer.async_wait(net::use_awaitable);
-                continue;
+                now = tools::get_tms();
+            } else {
+                BOOST_LOG_TRIVIAL(debug) << "获取大模型输出:" << text;
+                auto tts = tts::createTTS(executor_);
+                if(tts_stop_end_timestamp == 0) {
+                    ws_.text(true);
+                    co_await ws_.async_write(net::buffer(R"({"type":"tts","state":"start"})"), net::use_awaitable);
+                    tts_stop_end_timestamp = now;
+                    BOOST_LOG_TRIVIAL(debug) << "tts start:" << now;
+                }
+                auto audio = co_await tts->text_to_speak(text);
+                tts_sentence_queue.push({text, tts_stop_end_timestamp});
+                for(auto& data: audio) {
+                    ws_.binary(true);
+                    co_await ws_.async_write(net::buffer(data), net::use_awaitable);
+                    tts_stop_end_timestamp += 60;       //60ms一段音频
+                }
             }
-            BOOST_LOG_TRIVIAL(debug) << "获取大模型输出:" << text;
-            auto tts = tts::createTTS(executor_);
-            ws_.text(true);
-            co_await ws_.async_write(net::buffer(R"({"type":"tts","state":"start"})"), net::use_awaitable);
-            auto audio = co_await tts->text_to_speak(text);
-            ws_.text(true);
-            boost::json::object obj = {
-                {"type", "tts"},
-                {"state", "sentence_start"},
-                {"text", text}
-            };
-            co_await ws_.async_write(net::buffer(boost::json::serialize(obj)), net::use_awaitable);
-            for(auto& data: audio) {
-                ws_.binary(true);
-                co_await ws_.async_write(net::buffer(data), net::use_awaitable);
+            while(!tts_sentence_queue.empty()) {
+                auto front = tts_sentence_queue.front();
+                if(now < front.second) {
+                    break;
+                }
+                ws_.text(true);
+                boost::json::object obj = {
+                    {"type", "tts"},
+                    {"state", "sentence_start"},
+                    {"text", front.first}
+                };
+                co_await ws_.async_write(net::buffer(boost::json::serialize(obj)), net::use_awaitable);
+                tts_sentence_queue.pop();
+                BOOST_LOG_TRIVIAL(debug) << "tts sentence start:" << front.first << ",now:" << now << ",plan:" << front.second;
             }
-            ws_.text(true);
-            // co_await ws_.async_write(net::buffer(R"({"type":"tts","state":"stop"}")"), net::use_awaitable);
+            if(tts_stop_end_timestamp != 0 && now > tts_stop_end_timestamp) {
+                ws_.text(true);
+                co_await ws_.async_write(net::buffer(R"({"type":"tts","state":"stop"}")"), net::use_awaitable);
+                tts_stop_end_timestamp = 0;
+                BOOST_LOG_TRIVIAL(debug) << "tts end:" << now;
+            }
         }
+        BOOST_LOG_TRIVIAL(info) << "Connection tts loop over";
     }
 
     net::awaitable<void> Connection::on_asr_detect(std::string text) {
@@ -123,13 +147,13 @@ namespace xiaozhi {
 
     net::awaitable<void> Connection::handle_binary(beast::flat_buffer &buffer) {
         if(vad_.is_vad(buffer)) {
-            BOOST_LOG_TRIVIAL(debug) << "收到声音(" << &ws_ << "):" << buffer.size();
+            // BOOST_LOG_TRIVIAL(debug) << "收到声音(" << &ws_ << "):" << buffer.size();
             asr_->detect_opus(std::move(buffer));
             silence_timer_.cancel();
             silence_timer_.expires_after(std::chrono::milliseconds(min_silence_tms_));
             silence_timer_.async_wait(beast::bind_front_handler(&Connection::audio_silence_end, this));
         } else {
-            BOOST_LOG_TRIVIAL(debug) << "收到音频(" << &ws_ << "):" << buffer.size();
+            // BOOST_LOG_TRIVIAL(debug) << "收到音频(" << &ws_ << "):" << buffer.size();
         }
         co_return;
     }
@@ -140,8 +164,10 @@ namespace xiaozhi {
             beast::flat_buffer buffer;
             auto [ec, _] = co_await ws_.async_read(buffer, net::as_tuple(net::use_awaitable));
             if(ec == websocket::error::closed) {
-                co_return;
+                BOOST_LOG_TRIVIAL(debug) << "handle closed";
+                break;;
             } else if(ec) {
+                BOOST_LOG_TRIVIAL(debug) << "handle error" << ec.message();
                 throw boost::system::system_error(ec);
             }
             if(ws_.got_text()) {
@@ -150,9 +176,11 @@ namespace xiaozhi {
                 co_await handle_binary(buffer);
             }
         }
+        BOOST_LOG_TRIVIAL(debug) << "handle over";
     }
 
     Connection::~Connection() {
         is_released_ = true;
+        BOOST_LOG_TRIVIAL(info) << "Connection closed";
     }
 }
