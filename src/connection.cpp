@@ -22,6 +22,7 @@ namespace xiaozhi {
         ws_(std::move(ws)),
         silence_timer_(executor_) {
             min_silence_tms_ = setting->config["VAD"]["SileroVAD"]["min_silence_duration_ms"].as<int>();
+            close_connection_no_voice_time_ = setting->config["close_connection_no_voice_time"].as<int>(),
             asr_ = asr::createASR(executor_);
             // asr_->on_detect(beast::bind_front_handler(&Connection::on_asr_detect, this));
             asr_->on_detect([this](std::string text) {
@@ -120,7 +121,14 @@ namespace xiaozhi {
 
     net::awaitable<void> Connection::send_welcome() {
         session_id_ = tools::generate_uuid();
-        std::string welcome_msg_str(R"({"type":"hello","transport":"websocket","audio_params":{"sample_rate":16000}})");
+        boost::json::object welcome {
+            {"type", "hello"},
+            {"transport", setting_->config["welcome"]["transport"].as<std::string>()},
+            {"audio_params", {
+                {"sample_rate", setting_->config["welcome"]["audio_params"]["sample_rate"].as<int>()}
+            }}
+        };
+        auto welcome_msg_str = boost::json::serialize(welcome);
         BOOST_LOG_TRIVIAL(info) << "发送welcome_msg:" << welcome_msg_str;
         ws_.text(true);
         co_await ws_.async_write(net::buffer(std::move(welcome_msg_str)), net::use_awaitable);
@@ -162,6 +170,7 @@ namespace xiaozhi {
     net::awaitable<void> Connection::handle() {
         while(true) {
             beast::flat_buffer buffer;
+            beast::get_lowest_layer(ws_).expires_after(std::chrono::seconds(close_connection_no_voice_time_));
             auto [ec, _] = co_await ws_.async_read(buffer, net::as_tuple(net::use_awaitable));
             if(ec == websocket::error::closed) {
                 BOOST_LOG_TRIVIAL(debug) << "handle closed";

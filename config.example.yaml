@@ -1,0 +1,113 @@
+# 如果您是一名开发者，建议阅读以下内容。如果不是开发者，可以忽略这部分内容。
+# 在开发中，将【config.example.yaml】复制一份，改成【config.yaml】
+
+#io context并发线程数
+threads: 4
+# 服务器基础配置(Basic server configuration)
+server:
+  # 服务器监听地址和端口(Server listening address and port)
+  ip: 0.0.0.0
+  port: 8000
+  # 认证配置
+  auth:
+    # 是否启用认证
+    enabled: false
+    # 设备的token，可以在编译固件的环节，写入你自己定义的token
+    # 固件上的token和以下的token如果能对应，才能连接本服务端
+    tokens:
+      - token: "your-token1" # 设备1的token
+        name: "your-device-name1"  # 设备1标识
+      - token: "your-token2"  # 设备2的token
+        name: "your-device-name2" # 设备2标识
+    # 可选:设备白名单，如果设置了白名单，那么白名单的机器无论是什么token都可以连接。
+    #allowed_devices:
+    #  - "24:0A:C4:1D:3B:F0"  # MAC地址列表
+log:
+  # 设置日志等级：INFO、DEBUG
+  log_level: INFO
+  # 设置日志路径
+  log_dir: tmp
+  # 设置日志文件
+  log_file: "server.log"
+
+iot:
+  Speaker:
+    volume: 100
+welcome:
+  type: hello
+  transport: websocket
+  audio_params:
+    sample_rate: 24000
+prompt: |
+  你是一个叫小智/小志的台湾女孩，说话机车，声音好听，习惯简短表达，爱用网络梗。
+  请注意，要像一个人一样说话，请不要回复表情符号、代码、和xml标签。
+  当前时间是:{date_time}，现在我正在和你进行语音聊天，我们开始吧。
+  如果用户希望结束对话，请在最后说“拜拜”或“再见”。
+
+# 没有语音输入多久后断开连接(秒)，默认2分钟，即120秒
+close_connection_no_voice_time: 120
+
+CMD_exit:
+  - "退出"
+  - "关闭"
+
+# 具体处理时选择的模块(The module selected for specific processing)
+selected_module:
+  ASR: BytedanceASRV2
+  VAD: SileroVAD
+  # 将根据配置名称对应的type调用实际的LLM适配器
+  LLM: CozeLLMV3
+  # TTS将根据配置名称对应的type调用实际的TTS适配器
+  TTS: BytedanceTTSV3
+
+ASR:
+  FunASR:
+    type: fun_local
+    model_dir: models/SenseVoiceSmall
+    output_dir: tmp/
+  BytedanceASRV2:
+    appid: 你的火山引擎语音合成服务appid
+    access_token: 你的火山引擎语音合成服务access_token
+    cluster: volcengine_input_common
+VAD:
+  SileroVAD:
+    threshold: 0.5
+    model_path: models/silero_vad.onnx
+    min_silence_duration_ms: 700  # 如果说话停顿比较长，可以把这个值设置大一些
+
+LLM:
+  DifyLLM:
+    # 建议使用本地部署的dify接口，国内部分区域访问dify公有云接口可能会受限
+    # 如果使用DifyLLM，配置文件里prompt(提示词)是无效的，需要在dify控制台设置提示词
+    base_url: https://api.dify.cn/v1
+    api_key: 你的DifyLLM api key
+  CozeLLMV3:
+    bot_id: 你的bot_id
+    user_id: 你的user_id
+    personal_access_token: 你的coze个人令牌
+TTS:
+  # 当前支持的type为edge、doubao，可自行适配
+  EdgeTTS:
+    # 定义TTS API类型
+    type: edge
+    voice: zh-CN-XiaoxiaoNeural
+  BytedanceTTSV3:
+    voice: zh_female_wanwanxiaohe_moon_bigtts
+    appid: 你的火山引擎语音合成服务appid
+    access_token: 你的火山引擎语音合成服务access_token
+
+# 本地音乐播放配置
+music:
+  music_commands:
+    - "来一首歌"
+    - "唱一首歌"
+    - "播放音乐"
+    - "来点音乐"
+    - "背景音乐"
+    - "放首歌"
+    - "播放歌曲"
+    - "来点背景音乐"
+    - "我想听歌"
+    - "我要听歌"
+    - "放点音乐"
+  music_dir: "./music"  # 音乐文件存放路径

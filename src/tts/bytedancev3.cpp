@@ -350,7 +350,8 @@ namespace xiaozhi {
                     ctx_(ssl::context::sslv23_client),
                     ws_(executor_, ctx_),
                     sample_rate_(sample_rate),
-                    pcm_(sample_rate / 100 * 60),
+                    frame_size_(sample_rate / 1000 * 60),
+                    pcm_(frame_size_),
                     uuid_(tools::generate_uuid()) {
                         ctx_.set_verify_mode(ssl::verify_peer);
                         ctx_.set_default_verify_paths();

@@ -18,6 +18,6 @@ TEST_CASE("load setting") {
                 << std::endl;
     }
     YAML::Emitter emitter;
-    emitter << YAML::DoubleQuoted << YAML::Flow << YAML::BeginSeq << setting->config["xiaozhi"];
+    emitter << YAML::DoubleQuoted << YAML::Flow << YAML::BeginSeq << setting->config["welcome"];
     REQUIRE(std::string(emitter.c_str() + 1) == "{\"type\": \"hello\", \"version\": \"1\", \"transport\": \"websocket\", \"audio_params\": {\"format\": \"opus\", \"sample_rate\": \"16000\", \"channels\": \"1\", \"frame_duration\": \"60\"}}");
 }

@@ -5,10 +5,10 @@
 namespace xiaozhi {
     class Setting {
         public:
-            static std::shared_ptr<Setting> getSetting();
+            static std::shared_ptr<Setting> getSetting(const char* path=0);
             // ~Setting();
             YAML::Node config;
         private:
-            Setting();
+            Setting(const char* path=0);
     };
 }

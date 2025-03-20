@@ -22,6 +22,7 @@ namespace xiaozhi {
         private:
             std::atomic<bool> is_released_ = false;
             int min_silence_tms_ = 700;
+            int close_connection_no_voice_time_ = 120;
             std::shared_ptr<Setting> setting_ = nullptr;
             std::string session_id_;
             Vad vad_;

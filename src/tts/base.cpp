@@ -8,7 +8,7 @@ namespace xiaozhi {
             auto setting = Setting::getSetting();
             auto selected_module = setting->config["selected_module"]["TTS"].as<std::string>();
             if(selected_module == "BytedanceTTSV3") {
-                return std::make_unique<BytedanceV3>(executor, setting->config["TTS"][selected_module], setting->config["xiaozhi"]["audio_params"]["sample_rate"].as<int>());
+                return std::make_unique<BytedanceV3>(executor, setting->config["TTS"][selected_module], setting->config["welcome"]["audio_params"]["sample_rate"].as<int>());
             } else {
                 throw std::invalid_argument("Selected_module TTS not be supported");
             }
