@@ -8,6 +8,7 @@
 #include <boost/beast/core/error.hpp>
 #include <boost/beast/websocket/error.hpp>
 #include <boost/beast/websocket/rfc6455.hpp>
+#include <cstdint>
 #include <format>
 #include <iostream>
 #include <memory>
@@ -104,7 +105,7 @@ namespace xiaozhi {
     namespace tts {
         class Edge::Impl {
             private:
-                int sample_rate_;
+                const int sample_rate_ = 24000; //edge只支持24000khz采样
                 
                 std::string voice_;
                 std::string uuid_;
@@ -174,7 +175,6 @@ namespace xiaozhi {
             public:
                 Impl(const net::any_io_executor& executor, const YAML::Node& config, int sample_rate):
                     executor_(executor),
-                    sample_rate_(sample_rate),
                     voice_(config["voice"].as<std::string>()),
                     uuid_(tools::generate_uuid()) {
 
@@ -206,7 +206,7 @@ namespace xiaozhi {
 
                     std::vector<int16_t> pcm(frame_size);
                     int samples_decoded = 0;
-
+                    bool is_opus = false;
                     while(true) {
                         beast::flat_buffer buffer;
                         co_await ws_->async_read(buffer, net::use_awaitable);
@@ -215,15 +215,31 @@ namespace xiaozhi {
                             uint32_t header_len = (static_cast<uint32_t>(packet[0]) << 8) | static_cast<uint32_t>(packet[1]);
                             header_len += 2;
                             packet += header_len;
+                            auto packet_len = buffer.size() - header_len;
+                            if(packet_len < 3) {
+                                continue;
+                            }
+                            uint32_t bin_type = (static_cast<uint32_t>(packet[0]) << 16) | (static_cast<uint32_t>(packet[1]) << 8) | static_cast<uint32_t>(packet[2]);
+                            if(bin_type == 0xa3fc81) {
+                                is_opus = true;
+                                continue;
+                            } else if(bin_type == 0xab820c) {
+                                is_opus = false;
+                                continue;
+                            }
+                            if(!is_opus) {
+                                continue;
+                            }
+                            packet_len -= 6;
                             int origin_frame_size = opus_packet_get_samples_per_frame(packet, sample_rate_);
-                            int decoded_frame_size = opus_decode(decoder, packet, buffer.size() - header_len, pcm.data() + samples_decoded, origin_frame_size, 0);
+                            int decoded_frame_size = opus_decode(decoder, packet, packet_len < 120 ? packet_len : 120, pcm.data() + samples_decoded, origin_frame_size, 0);
                             if (decoded_frame_size < 0) { 
                                 BOOST_LOG_TRIVIAL(error) << "Edge tts opus decode failed:" << origin_frame_size << " len:" << buffer.size() - header_len << " error:" << opus_strerror(decoded_frame_size);
                             } else {
                                 samples_decoded += decoded_frame_size;
                                 if(samples_decoded >= frame_size) {
                                     samples_decoded -= frame_size;
-                                    std::vector<uint8_t> opus_packet_target(frame_size); // 最大缓冲区大小
+                                    std::vector<uint8_t> opus_packet_target(frame_size*2); // 最大缓冲区大小
                                     int bytes_written = opus_encode(encoder, pcm.data(), frame_size, 
                                                                 opus_packet_target.data(), opus_packet_target.size());
                                     if (bytes_written < 0) {
@@ -236,20 +252,20 @@ namespace xiaozhi {
                             }
                         } else {
                             std::string data = beast::buffers_to_string(buffer.data());
-                            // BOOST_LOG_TRIVIAL(debug) << data;
                             auto p = data.find("Path:turn.end");
                             if(p != data.npos) {
-                                // co_await ws_->async_close(websocket::close_code::normal, net::as_tuple(net::use_awaitable));
                                 break;
                             }
                         }
 
                     }
                     if(samples_decoded > 0) {
-                        BOOST_LOG_TRIVIAL(debug) << "Edge tts last frame size:" << samples_decoded;
                         pcm.resize(samples_decoded);
-                        std::vector<uint8_t> opus_packet_target(frame_size); // 最大缓冲区大小
-                        int bytes_written = opus_encode(encoder, pcm.data(), samples_decoded, 
+                        if(samples_decoded < frame_size) {
+                            pcm.insert(pcm.end(), frame_size - samples_decoded, 0); //补足60ms
+                        }
+                        std::vector<uint8_t> opus_packet_target(frame_size*2); // 最大缓冲区大小
+                        int bytes_written = opus_encode(encoder, pcm.data(), frame_size, 
                                                     opus_packet_target.data(), opus_packet_target.size());
                         if (bytes_written < 0) {
                             BOOST_LOG_TRIVIAL(error) << "Edge tts last frame been dropped, because opus encode failed:" << opus_strerror(bytes_written);
