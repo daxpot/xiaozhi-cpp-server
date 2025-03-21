@@ -40,7 +40,8 @@ namespace xiaozhi {
             net::awaitable<void> handle_text(beast::flat_buffer &buffer);
             net::awaitable<void> handle_binary(beast::flat_buffer &buffer);
             net::awaitable<void> send_welcome();
-
+            
+            void push_llm_response(std::string str);
             net::awaitable<void> tts_loop();
         public:
             Connection(std::shared_ptr<Setting> setting, websocket::stream<beast::tcp_stream> ws, net::any_io_executor executor);

@@ -6,6 +6,7 @@
 #include <chrono>
 #include <memory>
 #include <queue>
+#include <regex>
 #include <string>
 #include <xz-cpp-server/connection.h>
 #include <xz-cpp-server/common/tools.h>
@@ -100,6 +101,14 @@ namespace xiaozhi {
         BOOST_LOG_TRIVIAL(info) << "Connection tts loop over";
     }
 
+    void Connection::push_llm_response(std::string str) {
+        //去除首位空格和markdown的*号#号
+        str = std::regex_replace(str, std::regex(R"((^\s+)|(\s+$)[\*\#])"), "");
+        if(str.size() > 0) {
+            llm_response_.push(std::move(str));
+        }
+    }
+
     net::awaitable<void> Connection::on_asr_detect(std::string text) {
         BOOST_LOG_TRIVIAL(info) << "Connection recv asr text:" << text;
         dialogue_.push_back({"user", text});
@@ -109,12 +118,12 @@ namespace xiaozhi {
             message.append(res.data(), res.size());
             auto p = tools::find_last_segment(message);
             if(p != message.npos && p - pos + 1 > 6) {
-                llm_response_.push(message.substr(pos, p-pos+1));
+                push_llm_response(message.substr(pos, p-pos+1));
                 pos = p+1;
             }
         });
         if(pos < message.size()) {
-            llm_response_.push(message.substr(pos));
+            push_llm_response(message.substr(pos));
         }
         dialogue_.push_back({"assistant", message});
     }

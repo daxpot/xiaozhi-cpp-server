@@ -1,4 +1,6 @@
+#include <cstdint>
 #include <sstream>
+#include <unordered_set>
 #include <xz-cpp-server/common/tools.h>
 #include <boost/uuid/uuid.hpp>
 #include <boost/uuid/uuid_io.hpp>
@@ -9,7 +11,7 @@
 #include <chrono>
 
 // 常见的中文标点符号（UTF-8 编码）
-static const uint32_t chineseSegments[] = {
+static const std::unordered_set<uint32_t> chineseSegments {
     0xE38081, // 、
     0xEFBC8C, // ，
     0xE38082, // 。
@@ -36,10 +38,8 @@ namespace tools {
             uint32_t seq = (static_cast<uint32_t>(static_cast<unsigned char>(str[pos])) << 16) |
                        (static_cast<uint32_t>(static_cast<unsigned char>(str[pos + 1])) << 8) |
                        static_cast<uint32_t>(static_cast<unsigned char>(str[pos + 2]));
-            for (const auto& punct : chineseSegments) {
-                if (seq == punct) {
-                    return SegmentRet::CHINESE;
-                }
+            if(chineseSegments.contains(seq)) {
+                return SegmentRet::CHINESE;
             }
         }
         return SegmentRet::NONE;

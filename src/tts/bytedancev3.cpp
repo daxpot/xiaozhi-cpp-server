@@ -16,6 +16,7 @@
 #include <boost/beast/ssl.hpp>
 #include <boost/log/trivial.hpp>
 #include <xz-cpp-server/common/tools.h>
+#include <xz-cpp-server/common/request.h>
 #include <boost/json.hpp>
 #include <ogg/ogg.h>
 #include <opus/opus.h>
@@ -23,6 +24,7 @@ using tcp = net::ip::tcp;
 namespace beast = boost::beast;
 namespace ssl = net::ssl;
 namespace websocket = beast::websocket;
+using ws_stream = websocket::stream<ssl::stream<beast::tcp_stream>>;
 
 const std::string host{"openspeech.bytedance.com"};
 const std::string port{"443"};
@@ -93,71 +95,45 @@ namespace xiaozhi {
     namespace tts {
         class BytedanceV3::Impl {
             private:
-                std::string appid_;
-                std::string access_token_;
-                std::string voice_;
-                std::string uuid_;
                 int sample_rate_;
                 // 解码 3 个 320 样本帧到 PCM
                 int samples_decoded_ = 0;
                 int frame_size_ = 960;  //=sample_rate_ / 100 * 60ms
+                std::string appid_;
+                std::string access_token_;
+                std::string voice_;
+                std::string uuid_;
                 std::vector<int16_t> pcm_; // 目标缓冲区
 
                 net::any_io_executor executor_; //需要比resolver和ws先初始化，所以申明在前面
-                tcp::resolver resolver_;
-                ssl::context ctx_;
-                websocket::stream<ssl::stream<beast::tcp_stream>> ws_;
+                std::unique_ptr<ws_stream> ws_;
 
-                void clear() {
-                }
-                void clear(std::string title) {
-                    clear();
-                    BOOST_LOG_TRIVIAL(error) << title;
-                }
-                void clear(std::string title, beast::error_code ec) {
-                    clear();
+                void clear(const char* title, beast::error_code ec) {
                     if(ec) {
                         BOOST_LOG_TRIVIAL(error) << title << ec.message();
                     }
                 }
 
                 net::awaitable<bool> connect() {
-                    auto [ec, results] = co_await resolver_.async_resolve(host, port, net::as_tuple(net::use_awaitable));
-                    if(ec) {
-                        clear("BytedanceTTSV3 resolve:", ec);
+                    try {
+                        auto stream = co_await request::connect({true, host, port, path});
+                        ws_ = std::make_unique<ws_stream>(std::move(stream));
+                    } catch(const std::exception& e) {
+                        BOOST_LOG_TRIVIAL(error) << "BytedanceTTSV3 connect error:" << e.what();
                         co_return false;
                     }
-                    tcp::endpoint ep;
-                    std::tie(ec, ep) = co_await beast::get_lowest_layer(ws_).async_connect(results, net::as_tuple(net::use_awaitable));
-                    if(ec) {
-                        clear("BytedanceTTSV3 connect:", ec);
-                        co_return false;
-                    }
-                    // Set a timeout on the operation
-                    beast::get_lowest_layer(ws_).expires_after(std::chrono::seconds(30));
-                    if(!SSL_set_tlsext_host_name(ws_.next_layer().native_handle(), host.c_str())) {
-                        auto ec = beast::error_code(static_cast<int>(::ERR_get_error()),
-                            net::error::get_ssl_category());
-                        clear("BytedanceTTSV3 ssl:", ec);
-                        co_return false;
-                    }
-                    std::tie(ec) = co_await ws_.next_layer().async_handshake(ssl::stream_base::client, net::as_tuple(net::use_awaitable));
-                    if(ec) {
-                        clear("BytedanceTTSV3 ssl handshake:", ec);
-                        co_return false;
-                    }
-                    beast::get_lowest_layer(ws_).expires_never();
-                    ws_.set_option(
+                    beast::get_lowest_layer(*ws_).expires_never();
+                    ws_->set_option(
                         websocket::stream_base::timeout::suggested(
                             beast::role_type::client));
-                    ws_.set_option(websocket::stream_base::decorator(
+                    ws_->set_option(websocket::stream_base::decorator(
                         [this](websocket::request_type& req) {
                             req.set("X-Api-App-Key", appid_);
                             req.set("X-Api-Access-Key", access_token_);
                             req.set("X-Api-Resource-Id", "volc.service_type.10029");
                             req.set("X-Api-Connect-Id", uuid_);
                         }));
-                    std::tie(ec) = co_await ws_.async_handshake(host + ':' + port, path, net::as_tuple(net::use_awaitable));
+                    auto [ec] = co_await ws_->async_handshake(host + ':' + port, path, net::as_tuple(net::use_awaitable));
                     if(ec) {
                         clear("BytedanceTTSV3 handshake:", ec);
                         co_return false;
@@ -167,10 +143,10 @@ namespace xiaozhi {
 
                 net::awaitable<bool> start_connection() {
                     auto data = build_payload(EventCodes::StartConnection, "{}");
-                    co_await ws_.async_write(net::buffer(data), net::use_awaitable);
+                    co_await ws_->async_write(net::buffer(data), net::use_awaitable);
 
                     beast::flat_buffer buffer;
-                    co_await ws_.async_read(buffer, net::use_awaitable);
+                    co_await ws_->async_read(buffer, net::use_awaitable);
                     auto event_code = parser_response_code(beast::buffers_to_string(buffer.data()));
                     if(event_code != EventCodes::ConnectionStarted) {
                         BOOST_LOG_TRIVIAL(error) << "BytedanceTTS start connection fail with code:" << event_code << ",data:" << beast::make_printable(buffer.data());;
@@ -191,10 +167,10 @@ namespace xiaozhi {
                         }}
                     };
                     auto data = build_payload(EventCodes::StartSession, boost::json::serialize(obj), uuid_);
-                    co_await ws_.async_write(net::buffer(data), net::use_awaitable);
+                    co_await ws_->async_write(net::buffer(data), net::use_awaitable);
 
                     beast::flat_buffer buffer;
-                    co_await ws_.async_read(buffer, net::use_awaitable);
+                    co_await ws_->async_read(buffer, net::use_awaitable);
                     auto event_code = parser_response_code(beast::buffers_to_string(buffer.data()));
                     if(event_code != EventCodes::SessionStarted) {
                         BOOST_LOG_TRIVIAL(error) << "BytedanceTTS start session fail with code:" << event_code << ",data:" << beast::make_printable(buffer.data());
@@ -211,19 +187,19 @@ namespace xiaozhi {
                         }}
                     };
                     auto data = build_payload(EventCodes::TaskRequest, boost::json::serialize(obj), uuid_);
-                    co_await ws_.async_write(net::buffer(data), net::use_awaitable);
+                    co_await ws_->async_write(net::buffer(data), net::use_awaitable);
 
                     data = build_payload(EventCodes::FinishSession, "{}", uuid_);
-                    co_await ws_.async_write(net::buffer(data), net::use_awaitable);
+                    co_await ws_->async_write(net::buffer(data), net::use_awaitable);
                 }
 
                 net::awaitable<void> finish_connection() {
                     
                     auto data = build_payload(EventCodes::FinishConnection, "{}");
-                    co_await ws_.async_write(net::buffer(data), net::use_awaitable);
+                    co_await ws_->async_write(net::buffer(data), net::use_awaitable);
 
                     beast::flat_buffer buffer;
-                    co_await ws_.async_read(buffer, net::use_awaitable);
+                    co_await ws_->async_read(buffer, net::use_awaitable);
                     auto event_code = parser_response_code(beast::buffers_to_string(buffer.data()));
                     if(event_code != EventCodes::ConnectionFinished ) {
                         BOOST_LOG_TRIVIAL(error) << "BytedanceTTS finish connection fail with code:" << event_code << ",data:" << beast::make_printable(buffer.data());
@@ -346,15 +322,10 @@ namespace xiaozhi {
                     appid_(config["appid"].as<std::string>()),
                     access_token_(config["access_token"].as<std::string>()),
                     voice_(config["voice"].as<std::string>()),
-                    resolver_(executor_),
-                    ctx_(ssl::context::sslv23_client),
-                    ws_(executor_, ctx_),
                     sample_rate_(sample_rate),
                     frame_size_(sample_rate / 1000 * 60),
                     pcm_(frame_size_),
                     uuid_(tools::generate_uuid()) {
-                        ctx_.set_verify_mode(ssl::verify_peer);
-                        ctx_.set_default_verify_paths();
                 }
 
                 net::awaitable<std::vector<std::vector<uint8_t>>> text_to_speak(const std::string& text) {
@@ -374,7 +345,7 @@ namespace xiaozhi {
 
                     while(true) {
                         beast::flat_buffer buffer;
-                        co_await ws_.async_read(buffer, net::use_awaitable);
+                        co_await ws_->async_read(buffer, net::use_awaitable);
                         std::string data = beast::buffers_to_string(buffer.data());
                         uint8_t message_type = *(unsigned int *) (data.data() + 2);
                         if(message_type == 0xf0) {
