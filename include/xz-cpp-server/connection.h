@@ -29,6 +29,7 @@ namespace xiaozhi {
             net::any_io_executor executor_;
             std::vector<llm::Dialogue> dialogue_;
             ThreadSafeQueue<std::string> llm_response_;
+            std::vector<std::string> cmd_exit_;
             
             boost::asio::steady_timer silence_timer_;
             std::unique_ptr<asr::Base> asr_ = nullptr;

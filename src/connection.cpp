@@ -18,6 +18,7 @@
 namespace xiaozhi {
     Connection::Connection(std::shared_ptr<Setting> setting, websocket::stream<beast::tcp_stream> ws, net::any_io_executor executor):
         setting_(setting), 
+        cmd_exit_(setting->config["CMD_exit"].as<std::vector<std::string>>()),
         vad_(setting),
         executor_(executor),
         ws_(std::move(ws)),
@@ -111,6 +112,12 @@ namespace xiaozhi {
 
     net::awaitable<void> Connection::on_asr_detect(std::string text) {
         BOOST_LOG_TRIVIAL(info) << "Connection recv asr text:" << text;
+        for(auto& cmd : cmd_exit_) {
+            if(text == cmd) {
+                is_released_ = true;
+                co_return;
+            }
+        }
         dialogue_.push_back({"user", text});
         std::string message;
         size_t pos = 0;
@@ -177,7 +184,7 @@ namespace xiaozhi {
 
 
     net::awaitable<void> Connection::handle() {
-        while(true) {
+        while(!is_released_) {
             beast::flat_buffer buffer;
             beast::get_lowest_layer(ws_).expires_after(std::chrono::seconds(close_connection_no_voice_time_));
             auto [ec, _] = co_await ws_.async_read(buffer, net::as_tuple(net::use_awaitable));
