@@ -1,3 +1,4 @@
+#include <boost/log/trivial.hpp>
 #include <cstdint>
 #include <sstream>
 #include <unordered_set>
@@ -94,5 +95,28 @@ namespace tools {
         auto now = std::chrono::system_clock::now();
         auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch());
         return ms.count();
+    }
+
+    std::tuple<OpusEncoder*, OpusDecoder*> create_opus_coders(int sample_rate, bool create_encoder, bool create_decoder) {
+        int error;
+        OpusEncoder* encoder = nullptr;
+        OpusDecoder* decoder = nullptr;
+        if(create_encoder) {
+            encoder = opus_encoder_create(sample_rate, 1, OPUS_APPLICATION_AUDIO, &error);
+            if (error != OPUS_OK) {
+                BOOST_LOG_TRIVIAL(error) << "Failed to create opus encoder:" << opus_strerror(error);
+                return {nullptr, nullptr};
+            }
+        }
+        if(create_decoder) {
+            decoder = opus_decoder_create(sample_rate, 1, &error);
+            if (error != OPUS_OK) {
+                BOOST_LOG_TRIVIAL(error) << "Failed to create opus decoder:" << opus_strerror(error);
+                if(encoder)
+                    opus_encoder_destroy(encoder);
+                return {nullptr, nullptr};
+            }
+        }
+        return {encoder, decoder};
     }
 }

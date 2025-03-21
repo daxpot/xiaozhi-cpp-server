@@ -12,6 +12,9 @@ target_link_libraries(config_logger PUBLIC Boost::log Boost::log_setup)
 add_target_with_config(common_tools common/tools.cpp)
 target_link_libraries(common_tools PRIVATE Boost::iostreams)
 target_link_libraries(common_tools PRIVATE Boost::random)
+target_link_libraries(common_tools PUBLIC Boost::log)
+find_library(OPUS_LIBRARY NAMES opus)
+target_link_libraries(common_tools PRIVATE ${OPUS_LIBRARY})
 
 #common request
 add_target_with_config(common_request common/request.cpp)

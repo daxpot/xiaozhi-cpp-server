@@ -172,6 +172,18 @@ namespace xiaozhi {
                         << "\r\n";
                     co_await ws_->async_write(net::buffer(oss.str()), net::use_awaitable);
                 }
+
+                void encode_to_audio(OpusEncoder* encoder, std::vector<int16_t>& pcm, int frame_size, std::vector<std::vector<uint8_t>>& audio) {
+                    std::vector<uint8_t> opus_packet_target(frame_size*2); // 最大缓冲区大小
+                    int bytes_written = opus_encode(encoder, pcm.data(), frame_size, 
+                                                opus_packet_target.data(), opus_packet_target.size());
+                    if (bytes_written < 0) {
+                        BOOST_LOG_TRIVIAL(error) << "BytedanceTTSV3 opus encode failed:" << opus_strerror(bytes_written);
+                    } else {
+                        opus_packet_target.resize(bytes_written);
+                        audio.push_back(std::move(opus_packet_target));
+                    }
+                }
             public:
                 Impl(const net::any_io_executor& executor, const YAML::Node& config, int sample_rate):
                     executor_(executor),
@@ -188,18 +200,8 @@ namespace xiaozhi {
                     co_await send_command_request();
                     co_await send_ssml_request(text);
                     
-                    int error;
-                    OpusDecoder* decoder = opus_decoder_create(sample_rate_, 1, &error);
-                    if (error != OPUS_OK) {
-                        BOOST_LOG_TRIVIAL(error) << "Edge tts failed to create opus decoder:" << opus_strerror(error);
-                        co_return audio;
-                    }
-
-                    // 初始化 Opus 编码器 (16kHz, 单声道)
-                    OpusEncoder* encoder = opus_encoder_create(sample_rate_, 1, OPUS_APPLICATION_AUDIO, &error);
-                    if (error != OPUS_OK) {
-                        BOOST_LOG_TRIVIAL(error) << "Edge tts failed to create opus encoder:" << opus_strerror(error);
-                        opus_decoder_destroy(decoder);
+                    auto [encoder, decoder] = tools::create_opus_coders(sample_rate_);
+                    if(encoder == nullptr || decoder == nullptr) {
                         co_return audio;
                     }
                     auto frame_size = sample_rate_ / 1000 * 60;
@@ -239,15 +241,7 @@ namespace xiaozhi {
                                 samples_decoded += decoded_frame_size;
                                 if(samples_decoded >= frame_size) {
                                     samples_decoded -= frame_size;
-                                    std::vector<uint8_t> opus_packet_target(frame_size*2); // 最大缓冲区大小
-                                    int bytes_written = opus_encode(encoder, pcm.data(), frame_size, 
-                                                                opus_packet_target.data(), opus_packet_target.size());
-                                    if (bytes_written < 0) {
-                                        BOOST_LOG_TRIVIAL(error) << "Edge tts opus encode failed:" << opus_strerror(bytes_written);
-                                    } else {
-                                        opus_packet_target.resize(bytes_written);
-                                        audio.push_back(std::move(opus_packet_target));
-                                    }
+                                    encode_to_audio(encoder, pcm, frame_size, audio);
                                 }
                             }
                         } else {
@@ -264,15 +258,7 @@ namespace xiaozhi {
                         if(samples_decoded < frame_size) {
                             pcm.insert(pcm.end(), frame_size - samples_decoded, 0); //补足60ms
                         }
-                        std::vector<uint8_t> opus_packet_target(frame_size*2); // 最大缓冲区大小
-                        int bytes_written = opus_encode(encoder, pcm.data(), frame_size, 
-                                                    opus_packet_target.data(), opus_packet_target.size());
-                        if (bytes_written < 0) {
-                            BOOST_LOG_TRIVIAL(error) << "Edge tts last frame been dropped, because opus encode failed:" << opus_strerror(bytes_written);
-                        } else {
-                            opus_packet_target.resize(bytes_written);
-                            audio.push_back(std::move(opus_packet_target));
-                        }
+                        encode_to_audio(encoder, pcm, frame_size, audio);
                     }
                     opus_decoder_destroy(decoder);
                     opus_encoder_destroy(encoder);

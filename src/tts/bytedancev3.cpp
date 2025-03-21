@@ -6,6 +6,7 @@
 #include <boost/json/object.hpp>
 #include <boost/json/serialize.hpp>
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <opus/opus_defines.h>
 #include <string>
@@ -72,6 +73,10 @@ static int32_t parser_response_code(const std::string& payload, int header_len=4
     return boost::endian::big_to_native(event_code);
 }
 
+static int32_t parser_response_code(const unsigned char* data, int header_len=4) {
+    uint32_t event_code = *(unsigned int *) (data + header_len);
+    return boost::endian::big_to_native(event_code);
+}
 
 enum EventCodes: int32_t {
     StartConnection = 1,    //1
@@ -90,6 +95,84 @@ enum EventCodes: int32_t {
     TTSSentenceEnd = 351,
     TTSResponse = 352
 };
+
+// Ogg页面头部结构（简化版）
+struct OggPageHeader {
+    uint8_t capture_pattern[4]; // "OggS"
+    uint8_t version;
+    uint8_t header_type;
+    uint64_t granule_position;
+    uint32_t serial_number;
+    uint32_t page_sequence;
+    uint32_t checksum;
+    uint8_t segment_count;
+};
+
+// 从数据中提取Opus帧
+std::vector<std::pair<size_t, size_t>> extractOpusFrames(const unsigned char* data, size_t data_size) {
+    std::vector<std::pair<size_t, size_t>> opus_frames_pos; // 存储提取的Opus帧
+    size_t offset = 0;
+
+    while (offset < data_size) {
+        // 检查是否还有足够的数据读取Ogg页面头部
+        if (offset + 27 > data_size) break;
+
+        // 读取Ogg页面头部
+        OggPageHeader header;
+        memcpy(&header.capture_pattern, data + offset, 4);
+        offset += 4;
+        header.version = data[offset++];
+        header.header_type = data[offset++];
+        header.granule_position = *(uint64_t*)(data + offset); // 小端序
+        offset += 8;
+        header.serial_number = *(uint32_t*)(data + offset); // 小端序
+        offset += 4;
+        header.page_sequence = *(uint32_t*)(data + offset); // 小端序
+        offset += 4;
+        header.checksum = *(uint32_t*)(data + offset); // 小端序
+        offset += 4;
+        header.segment_count = data[offset++];
+
+        // 验证OggS标记
+        if (memcmp(header.capture_pattern, "OggS", 4) != 0) {
+            BOOST_LOG_TRIVIAL(error) << "BytedanceTTSV3 Invalid OggS pattern at offset " << offset - 27 << std::endl;
+            break;
+        }
+
+        // 读取段表
+        if (offset + header.segment_count > data_size) break;
+        std::vector<uint8_t> segment_table(header.segment_count);
+        memcpy(segment_table.data(), data + offset, header.segment_count);
+        offset += header.segment_count;
+
+        // 计算页面数据总长度
+        size_t payload_size = 0;
+        for (uint8_t len : segment_table) {
+            payload_size += len;
+        }
+
+        // 检查数据是否足够
+        if (offset + payload_size > data_size) break;
+
+        // 跳过元数据页面（序列号0和1）
+        if (header.page_sequence == 0 || header.page_sequence == 1) {
+            offset += payload_size; // 跳过OpusHead或OpusTags
+            continue;
+        }
+
+        // 提取Opus帧（每个段可能是一个完整的Opus帧）
+        size_t segment_offset = offset;
+        for (uint8_t len : segment_table) {
+            if (len > 0) {
+                opus_frames_pos.push_back({segment_offset, len});
+                segment_offset += len;
+            }
+        }
+        offset += payload_size;
+    }
+
+    return opus_frames_pos;
+}
 
 namespace xiaozhi {
     namespace tts {
@@ -206,115 +289,16 @@ namespace xiaozhi {
                     }
                 }
 
-                // 从 Ogg 数据中提取 Opus 数据包
-                std::vector<std::vector<uint8_t>> extract_opus_packets(const std::string& ogg_data) {
-                    std::vector<std::vector<uint8_t>> opus_packets;
-
-                    // 初始化 Ogg 流状态
-                    ogg_sync_state oy;
-                    ogg_sync_init(&oy);
-
-                    // 将 std::string 数据写入 Ogg 同步缓冲区
-                    char* buffer = ogg_sync_buffer(&oy, ogg_data.size());
-                    memcpy(buffer, ogg_data.data(), ogg_data.size());
-                    ogg_sync_wrote(&oy, ogg_data.size());
-
-                    // 分割 Ogg 页面
-                    ogg_page og;
-                    ogg_stream_state os;
-                    bool stream_initialized = false;
-
-                    while (ogg_sync_pageout(&oy, &og) == 1) {
-                        if (!stream_initialized) {
-                            ogg_stream_init(&os, ogg_page_serialno(&og));
-                            stream_initialized = true;
-                        }
-
-                        // 将页面提交到流状态
-                        if (ogg_stream_pagein(&os, &og) != 0) {
-                            throw std::runtime_error("Failed to process Ogg page");
-                        }
-
-                        // 检查是否是头部页面（跳过 OpusHead 和 OpusTags）
-                        if (ogg_page_bos(&og)) { // Beginning of Stream
-                            continue; // 跳过 "OpusHead"
-                        }
-                        if (strncmp((char*)og.body, "OpusTags", 8) == 0) {
-                            continue; // 跳过 "OpusTags"
-                        }
-
-                        // 提取数据包
-                        ogg_packet op;
-                        while (ogg_stream_packetout(&os, &op) == 1) {
-                            std::vector<uint8_t> packet(op.bytes);
-                            memcpy(packet.data(), op.packet, op.bytes);
-                            opus_packets.push_back(std::move(packet));
-                        }
-                    }
-
-                    // 清理
-                    if (stream_initialized) {
-                        ogg_stream_clear(&os);
-                    }
-                    ogg_sync_clear(&oy);
-
-                    return opus_packets;
-                }
-
-                std::vector<std::vector<uint8_t>> convert_to_60ms_frames(const std::vector<std::vector<uint8_t>>& opus_packets_source) {
-                    std::vector<std::vector<uint8_t>> opus_packets_target;
-                
-                    // 初始化 Opus 解码器 (16kHz, 单声道)
-                    int error;
-                    OpusDecoder* decoder = opus_decoder_create(sample_rate_, 1, &error);
-                    if (error != OPUS_OK) {
-                        BOOST_LOG_TRIVIAL(error) << "BytedanceTTSV3 failed to create opus decoder:" << opus_strerror(error);
-                        return opus_packets_target;
-                    }
-                
-                    // 初始化 Opus 编码器 (16kHz, 单声道)
-                    OpusEncoder* encoder = opus_encoder_create(sample_rate_, 1, OPUS_APPLICATION_AUDIO, &error);
-                    if (error != OPUS_OK) {
-                        BOOST_LOG_TRIVIAL(error) << "BytedanceTTSV3 failed to create opus encoder:" << opus_strerror(error);
-                        opus_decoder_destroy(decoder);
-                        return opus_packets_target;
-                    }
-                
-                    size_t i = 0;
-                    while(i < opus_packets_source.size()) {
-                        while(i < opus_packets_source.size() && samples_decoded_ < frame_size_) {
-                            const auto& packet = opus_packets_source[i++];
-                            auto origin_frame_size = opus_packet_get_samples_per_frame(packet.data(), sample_rate_);
-                            int decoded_frame_size = opus_decode(decoder, packet.data(), packet.size(), 
-                                                        pcm_.data() + samples_decoded_, origin_frame_size, 0);
-                            if (decoded_frame_size < 0) { 
-                                BOOST_LOG_TRIVIAL(error) << "BytedanceTTSV3 opus decode failed:" << opus_strerror(decoded_frame_size);
-                                break;
-                            }
-                            samples_decoded_ += decoded_frame_size; // 通常是 320
-                        }
-                
-                        if (samples_decoded_ != frame_size_) {
-                            continue;
-                        }
-                        samples_decoded_ = 0; //重新进入下一轮
-                        // 编码为 frame_size_ 样本的 Opus 数据包
-                        std::vector<uint8_t> opus_packet_target(frame_size_); // 最大缓冲区大小
-                        int bytes_written = opus_encode(encoder, pcm_.data(), frame_size_, 
-                                                    opus_packet_target.data(), opus_packet_target.size());
-                        if (bytes_written < 0) {
-                            BOOST_LOG_TRIVIAL(error) << "BytedanceTTSV3 opus encode failed:" << opus_strerror(bytes_written);
-                            continue;
-                        }
-                
+                void encode_to_audio(OpusEncoder* encoder, std::vector<int16_t>& pcm, int frame_size, std::vector<std::vector<uint8_t>>& audio) {
+                    std::vector<uint8_t> opus_packet_target(frame_size*2); // 最大缓冲区大小
+                    int bytes_written = opus_encode(encoder, pcm.data(), frame_size, 
+                                                opus_packet_target.data(), opus_packet_target.size());
+                    if (bytes_written < 0) {
+                        BOOST_LOG_TRIVIAL(error) << "BytedanceTTSV3 opus encode failed:" << opus_strerror(bytes_written);
+                    } else {
                         opus_packet_target.resize(bytes_written);
-                        opus_packets_target.push_back(std::move(opus_packet_target));
+                        audio.push_back(std::move(opus_packet_target));
                     }
-                
-                    // 清理
-                    opus_decoder_destroy(decoder);
-                    opus_encoder_destroy(encoder);
-                    return opus_packets_target;
                 }
             public:
                 Impl(const net::any_io_executor& executor, const YAML::Node& config, int sample_rate):
@@ -343,11 +327,20 @@ namespace xiaozhi {
                     }
                     co_await task_request(text);
 
+                    auto [encoder, decoder] = tools::create_opus_coders(sample_rate_);
+                    if(encoder == nullptr || decoder == nullptr) {
+                        co_return audio;
+                    }
+                    auto frame_size = sample_rate_ / 1000 * 60;
+
+                    std::vector<int16_t> pcm(frame_size);
+                    int samples_decoded = 0;
+
                     while(true) {
                         beast::flat_buffer buffer;
                         co_await ws_->async_read(buffer, net::use_awaitable);
-                        std::string data = beast::buffers_to_string(buffer.data());
-                        uint8_t message_type = *(unsigned int *) (data.data() + 2);
+                        auto data = static_cast<const unsigned char*>(buffer.data().data());
+                        uint8_t message_type = data[2];
                         if(message_type == 0xf0) {
                             BOOST_LOG_TRIVIAL(error) << "BytedanceTTSV3 message type error";
                             break;
@@ -357,34 +350,32 @@ namespace xiaozhi {
                             break;
                         } else if(event_code == EventCodes::TTSResponse) {
                             auto session_id_len = parser_response_code(data, 8);
-                            // auto audio_len = parser_response_code(data, 12+session_id_len);
-                            // auto session_id = data.substr(12, session_id_len);
-                            // BOOST_LOG_TRIVIAL(debug) << "header:" << data.substr(0, 16+session_id_len);
-                            // BOOST_LOG_TRIVIAL(debug) << "response:" << data.substr(16+session_id_len);
-                            // audio.push_back(data.substr(16+session_id_len));
-                            auto opus_packets_source = extract_opus_packets(data.substr(16+session_id_len));
-                            auto opus_packets_target = convert_to_60ms_frames(opus_packets_source);
-                            audio.insert(audio.end(), opus_packets_target.begin(), opus_packets_target.end());
-                        }
-                    }
-                    if(samples_decoded_ > 0 && samples_decoded_ != frame_size_) {
-                        int error;
-                        OpusEncoder* encoder = opus_encoder_create(sample_rate_, 1, OPUS_APPLICATION_AUDIO, &error);
-                        if (error != OPUS_OK) {
-                            BOOST_LOG_TRIVIAL(error) << "BytedanceTTSV3 last frame been dropped, because failed to create opus encoder:" << opus_strerror(error);
-                        } else {
-                            pcm_.resize(samples_decoded_);
-                            std::vector<uint8_t> opus_packet_target(frame_size_); // 最大缓冲区大小
-                            int bytes_written = opus_encode(encoder, pcm_.data(), samples_decoded_, 
-                                                        opus_packet_target.data(), opus_packet_target.size());
-                            if (bytes_written < 0) {
-                                BOOST_LOG_TRIVIAL(error) << "BytedanceTTSV3 last frame been dropped, because opus encode failed:" << opus_strerror(bytes_written);
+                            auto packet = data + 16 + session_id_len;
+                            auto frames_pos = extractOpusFrames(packet, buffer.size() - 16 - session_id_len);
+                            for(auto& pos : frames_pos) {
+                                int origin_frame_size = opus_packet_get_samples_per_frame(packet + pos.first, sample_rate_);
+                                int decoded_frame_size = opus_decode(decoder, packet + pos.first, pos.second, pcm.data() + samples_decoded, origin_frame_size, 0);
+                                if (decoded_frame_size < 0) { 
+                                    BOOST_LOG_TRIVIAL(error) << "BytedanceTTSV3 opus decode failed:" << origin_frame_size << " len:" << pos.second << " error:" << opus_strerror(decoded_frame_size);
+                                } else {
+                                    samples_decoded += decoded_frame_size;
+                                    if(samples_decoded >= frame_size) {
+                                        samples_decoded -= frame_size;
+                                        encode_to_audio(encoder, pcm, frame_size, audio);
+                                    }
+                                }
                             }
-                            opus_packet_target.resize(bytes_written);
-                            opus_encoder_destroy(encoder);
-                            audio.push_back(opus_packet_target);
                         }
                     }
+                    if(samples_decoded > 0) {
+                        pcm.resize(samples_decoded);
+                        if(samples_decoded < frame_size) {
+                            pcm.insert(pcm.end(), frame_size - samples_decoded, 0); //补足60ms
+                        }
+                        encode_to_audio(encoder, pcm, frame_size, audio);
+                    }
+                    opus_decoder_destroy(decoder);
+                    opus_encoder_destroy(encoder);
                     co_await finish_connection();
                     co_return audio;
                 }
