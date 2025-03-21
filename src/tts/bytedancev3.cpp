@@ -179,14 +179,10 @@ namespace xiaozhi {
         class BytedanceV3::Impl {
             private:
                 int sample_rate_;
-                // 解码 3 个 320 样本帧到 PCM
-                int samples_decoded_ = 0;
-                int frame_size_ = 960;  //=sample_rate_ / 100 * 60ms
                 std::string appid_;
                 std::string access_token_;
                 std::string voice_;
                 std::string uuid_;
-                std::vector<int16_t> pcm_; // 目标缓冲区
 
                 net::any_io_executor executor_; //需要比resolver和ws先初始化，所以申明在前面
                 std::unique_ptr<ws_stream> ws_;
@@ -307,8 +303,6 @@ namespace xiaozhi {
                     access_token_(config["access_token"].as<std::string>()),
                     voice_(config["voice"].as<std::string>()),
                     sample_rate_(sample_rate),
-                    frame_size_(sample_rate / 1000 * 60),
-                    pcm_(frame_size_),
                     uuid_(tools::generate_uuid()) {
                 }
 
