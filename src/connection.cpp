@@ -59,13 +59,13 @@ namespace xiaozhi {
             if(!llm_response_.try_pop(text)) {
                 net::steady_timer timer(executor_, std::chrono::milliseconds(60));
                 co_await timer.async_wait(net::use_awaitable);
-                now = tools::get_tms();
             } else {
                 BOOST_LOG_TRIVIAL(debug) << "获取大模型输出:" << text;
                 auto tts = tts::createTTS(executor_);
                 if(tts_stop_end_timestamp == 0) {
                     ws_.text(true);
                     co_await ws_.async_write(net::buffer(R"({"type":"tts","state":"start"})"), net::use_awaitable);
+                    now = tools::get_tms();
                     tts_stop_end_timestamp = now;
                     BOOST_LOG_TRIVIAL(debug) << "tts start:" << now;
                 }
@@ -79,6 +79,7 @@ namespace xiaozhi {
             }
             while(!tts_sentence_queue.empty()) {
                 auto front = tts_sentence_queue.front();
+                now = tools::get_tms();
                 if(now < front.second) {
                     break;
                 }
@@ -92,6 +93,7 @@ namespace xiaozhi {
                 tts_sentence_queue.pop();
                 BOOST_LOG_TRIVIAL(debug) << "tts sentence start:" << front.first << ",now:" << now << ",plan:" << front.second;
             }
+            now = tools::get_tms();
             if(tts_stop_end_timestamp != 0 && now > tts_stop_end_timestamp) {
                 ws_.text(true);
                 co_await ws_.async_write(net::buffer(R"({"type":"tts","state":"stop"}")"), net::use_awaitable);

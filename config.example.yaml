@@ -50,6 +50,8 @@ close_connection_no_voice_time: 120
 CMD_exit:
   - "退出"
   - "关闭"
+  - "拜拜"
+  - "再见"
 
 # 具体处理时选择的模块(The module selected for specific processing)
 selected_module:
@@ -88,8 +90,7 @@ LLM:
 TTS:
   # 当前支持的type为edge、doubao，可自行适配
   EdgeTTS:
-    # 定义TTS API类型
-    type: edge
+    # 定义TTS API类型,EdgeTTS支持的是24000采样率，需要将welcom.audio_params.sample_rate设置为24000
     voice: zh-CN-XiaoxiaoNeural
   BytedanceTTSV3:
     voice: zh_female_wanwanxiaohe_moon_bigtts
