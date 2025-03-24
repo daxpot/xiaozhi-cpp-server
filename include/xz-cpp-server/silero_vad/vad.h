@@ -1,7 +1,6 @@
 #pragma once
 #include <opus/opus.h>
 #include <boost/beast.hpp>
-#include <vector>
 #include <xz-cpp-server/config/setting.h>
 
 namespace beast = boost::beast;

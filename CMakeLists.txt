@@ -7,8 +7,17 @@ project(
     LANGUAGES CXX
 )
 
+set(CMAKE_CXX_STANDARD 20)          # 默认使用 C++20
+set(CMAKE_CXX_EXTENSIONS OFF)       # 关闭编译器扩展（如 GNU 扩展）
+set(CMAKE_CXX_STANDARD_REQUIRED ON) # 强制要求 C++20，避免降级
+
 include_directories("${PROJECT_SOURCE_DIR}/include")
 find_package(Boost COMPONENTS log log_setup iostreams random json REQUIRED)
+find_package(OpenSSL REQUIRED)
+find_library(OGG_LIBRARY NAMES ogg)
+find_library(OPUS_LIBRARY NAMES opus)
+find_library(ONNXRUNTIME_LIB NAMES onnxruntime PATHS "extern/onnxruntime-linux-x64-1.21.0/lib"  NO_DEFAULT_PATH)
+include_directories("${PROJECT_SOURCE_DIR}/extern/onnxruntime-linux-x64-1.21.0/include")
 
 add_subdirectory(extern/yaml-cpp)
 add_subdirectory(apps)

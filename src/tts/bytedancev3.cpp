@@ -8,7 +8,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <opus/opus_defines.h>
 #include <string>
 #include <vector>
 #include <xz-cpp-server/config/setting.h>
@@ -19,7 +18,6 @@
 #include <xz-cpp-server/common/tools.h>
 #include <xz-cpp-server/common/request.h>
 #include <boost/json.hpp>
-#include <ogg/ogg.h>
 #include <opus/opus.h>
 using tcp = net::ip::tcp;
 namespace beast = boost::beast;

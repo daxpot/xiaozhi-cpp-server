@@ -21,13 +21,14 @@ namespace xiaozhi {
     class Connection: public std::enable_shared_from_this<Connection> {
         private:
             std::atomic<bool> is_released_ = false;
+            std::atomic<bool> is_tts_loop_over_ = false;
             int min_silence_tms_ = 700;
             int close_connection_no_voice_time_ = 120;
             std::shared_ptr<Setting> setting_ = nullptr;
             std::string session_id_;
             Vad vad_;
             net::any_io_executor executor_;
-            std::vector<llm::Dialogue> dialogue_;
+            boost::json::array dialogue_;
             ThreadSafeQueue<std::string> llm_response_;
             std::vector<std::string> cmd_exit_;
             

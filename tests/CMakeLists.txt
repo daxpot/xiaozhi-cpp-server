@@ -3,8 +3,6 @@ include(Catch)
 function(add_target_with_config target_name)
     add_executable(${target_name} ${ARGN})
     target_link_libraries(${target_name} PRIVATE Catch2::Catch2WithMain)
-    target_compile_features(${target_name} PUBLIC cxx_std_20)
-    set_target_properties(${target_name} PROPERTIES CXX_EXTENSIONS OFF)
     catch_discover_tests(${target_name})
     
 endfunction()

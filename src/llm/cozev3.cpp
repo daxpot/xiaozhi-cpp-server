@@ -48,11 +48,12 @@ namespace xiaozhi {
                     co_return conversation_id_;
                 }
 
-                net::awaitable<void> response(const std::vector<Dialogue>& dialogue, const std::function<void(std::string_view)>& callback) {
+                net::awaitable<void> response(const boost::json::array& dialogue, const std::function<void(std::string_view)>& callback) {
                     std::string query;
-                    auto it = std::find_if(dialogue.rbegin(), dialogue.rend(), [](auto& x) {return x.role == "user";});
-                    if(it != dialogue.rend()) {
-                        query = it->content;
+                    for(auto it = dialogue.rbegin(); it != dialogue.rend(); --it) {
+                        if(it->at("role").as_string() == "user") {
+                            query = it->at("content").as_string();
+                        }
                     }
                     const std::string url = std::format("https://api.coze.cn/v3/chat?conversation_id={}", conversation_id_);
                     boost::json::object data = {
@@ -102,7 +103,7 @@ namespace xiaozhi {
             co_return co_await impl_->create_session();
         }
 
-        net::awaitable<void> CozeV3::response(const std::vector<Dialogue>& dialogue, const std::function<void(std::string_view)>& callback) {
+        net::awaitable<void> CozeV3::response(const boost::json::array& dialogue, const std::function<void(std::string_view)>& callback) {
             co_await impl_->response(dialogue, callback);
         }
     }

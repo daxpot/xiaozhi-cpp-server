@@ -2,6 +2,7 @@
 #include <xz-cpp-server/llm/base.h>
 #include <xz-cpp-server/llm/cozev3.h>
 #include <xz-cpp-server/llm/dify.h>
+#include <xz-cpp-server/llm/openai.h>
 #include <xz-cpp-server/config/setting.h>
 
 namespace xiaozhi {
@@ -13,6 +14,8 @@ namespace xiaozhi {
                 return std::make_unique<CozeV3>(executor, setting->config["LLM"][selected_module]);
             } else if(selected_module == "DifyLLM") {
                 return std::make_unique<Dify>(executor, setting->config["LLM"][selected_module]);
+            } else if(selected_module == "ChatGLMLLM") {
+                return std::make_unique<Openai>(executor, setting->config["LLM"][selected_module]);
             } else {
                 throw std::invalid_argument("Selected_module LLM not be supported");
             }
