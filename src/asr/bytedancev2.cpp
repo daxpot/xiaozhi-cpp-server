@@ -1,4 +1,5 @@
 #include <atomic>
+#include <boost/json/serialize.hpp>
 #include <memory>
 #include <optional>
 #include <xz-cpp-server/asr/bytedancev2.h>
@@ -281,6 +282,7 @@ namespace xiaozhi {
                     auto rej = parse_response(beast::buffers_to_string(buffer.data()), is_gzip);
                     if(!rej || rej->at("code").as_int64() != 1000) {
                         clear("");
+                        BOOST_LOG_TRIVIAL(error) << "BytedanceASRV2 websocket full connect error:" << (rej ? boost::json::serialize(rej.value()) : "null response.");
                         co_return false;
                     }
                     ws_state_ = WebsocketState::Connected;
@@ -334,26 +336,31 @@ namespace xiaozhi {
                         clear("BytedanceASRV2 send audio:", ec);
                         co_return;
                     }
-                    beast::flat_buffer buffer;
-                    std::tie(ec, bytes_transferred) = co_await ws_->async_read(buffer, net::as_tuple(net::use_awaitable));
-                    if(ec) {
-                        clear("BytedanceASRV2 recv server:", ec);
-                        co_return;
-                    }
-                    auto rej = parse_response(beast::buffers_to_string(buffer.data()), is_gzip);
-                    if(!rej || rej->at("code").as_int64() != 1000) {
-                        BOOST_LOG_TRIVIAL(error) << "BytedanceASRV2 recv error:" << (rej ?  json::serialize(rej.value()) : "");
-                        co_return;
-                    }
-                    if(rej->contains("result")) {
-                        auto& result = rej->at("result").as_array();
-                        BOOST_LOG_TRIVIAL(info) << "BytedanceASRV2 detect:" << json::serialize(rej.value());
-                        std::string sentence;
-                        for(const auto &item : result) {
-                            sentence += item.at("text").as_string();
-                        }
-                        if(on_detect_cb_) {
-                            on_detect_cb_(std::move(sentence));
+                    if(is_last) {
+                        while(!is_released_) {
+                            beast::flat_buffer buffer;
+                            std::tie(ec, bytes_transferred) = co_await ws_->async_read(buffer, net::as_tuple(net::use_awaitable));
+                            if(ec) {
+                                clear("BytedanceASRV2 recv server:", ec);
+                                co_return;
+                            }
+                            auto rej = parse_response(beast::buffers_to_string(buffer.data()), is_gzip);
+                            if(!rej || rej->at("code").as_int64() != 1000) {
+                                BOOST_LOG_TRIVIAL(error) << "BytedanceASRV2 recv error:" << (rej ?  json::serialize(rej.value()) : "");
+                                co_return;
+                            }
+                            if(rej->contains("result") && rej->at("sequence").as_int64() < 0) {
+                                auto& result = rej->at("result").as_array();
+                                BOOST_LOG_TRIVIAL(info) << "BytedanceASRV2 detect:" << json::serialize(rej.value());
+                                std::string sentence;
+                                for(const auto &item : result) {
+                                    sentence += item.at("text").as_string();
+                                }
+                                if(on_detect_cb_) {
+                                    on_detect_cb_(std::move(sentence));
+                                }
+                                break;
+                            }
                         }
                     }
                 }
@@ -374,6 +381,8 @@ namespace xiaozhi {
                                     std::rethrow_exception(e);
                                 } catch(std::exception& e) {
                                     BOOST_LOG_TRIVIAL(error) << "BytedanceASRV2 run error:" << e.what();
+                                } catch(...) {
+                                    BOOST_LOG_TRIVIAL(error) << "BytedanceASRV2 run unknown error";
                                 }
                             }
                         });

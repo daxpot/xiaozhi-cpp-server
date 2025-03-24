@@ -2,6 +2,7 @@
 #include <boost/asio/registered_buffer.hpp>
 #include <boost/asio/use_awaitable.hpp>
 #include <boost/beast/core/bind_handler.hpp>
+#include <boost/json/object.hpp>
 #include <boost/log/trivial.hpp>
 #include <chrono>
 #include <memory>
@@ -23,6 +24,14 @@ namespace xiaozhi {
         executor_(executor),
         ws_(std::move(ws)),
         silence_timer_(executor_) {
+            auto prompt = setting->config["prompt"].as<std::string>();
+            size_t pos = prompt.find("{date_time}");
+            if(pos != prompt.npos) {
+                auto now = std::chrono::system_clock::now();
+                prompt.replace(pos, 11, std::format("{:%Y-%m-%d %H:%M:%S}", std::chrono::time_point_cast<std::chrono::seconds>(now)));
+            }
+
+            dialogue_.push_back(boost::json::object{{"role", "system"}, {"content", std::move(prompt)}});
             min_silence_tms_ = setting->config["VAD"]["SileroVAD"]["min_silence_duration_ms"].as<int>();
             close_connection_no_voice_time_ = setting->config["close_connection_no_voice_time"].as<int>(),
             asr_ = asr::createASR(executor_);
@@ -34,17 +43,22 @@ namespace xiaozhi {
                             std::rethrow_exception(e);
                         } catch(std::exception& e) {
                             BOOST_LOG_TRIVIAL(error) << "Connection asr detect spawn error:" << e.what();
+                        } catch(...) {
+                            BOOST_LOG_TRIVIAL(error) << "Connection asr detect spawn unknown error";
                         }
                     }
                 });
             });
             llm_ = llm::createLLM(executor_);
-            net::co_spawn(executor_, tts_loop(), [](std::exception_ptr e) {
+            net::co_spawn(executor_, tts_loop(), [this](std::exception_ptr e) {
+                is_tts_loop_over_ = true;
                 if(e) {
                     try {
                         std::rethrow_exception(e);
                     } catch(std::exception& e) {
-                        BOOST_LOG_TRIVIAL(error) << "Connection tts loop error:" << e.what();
+                        BOOST_LOG_TRIVIAL(error) << "Connection tts loop spawn error:" << e.what();
+                    } catch(...) {
+                        BOOST_LOG_TRIVIAL(error) << "Connection tts loop spawn unknown error";
                     }
                 }
             });
@@ -64,7 +78,8 @@ namespace xiaozhi {
                 auto tts = tts::createTTS(executor_);
                 if(tts_stop_end_timestamp == 0) {
                     ws_.text(true);
-                    co_await ws_.async_write(net::buffer(R"({"type":"tts","state":"start"})"), net::use_awaitable);
+                    const std::string_view data = R"({"type":"tts","state":"start"})";
+                    co_await ws_.async_write(net::buffer(data.data(), data.size()), net::use_awaitable);
                     now = tools::get_tms();
                     tts_stop_end_timestamp = now;
                     BOOST_LOG_TRIVIAL(debug) << "tts start:" << now;
@@ -96,7 +111,8 @@ namespace xiaozhi {
             now = tools::get_tms();
             if(tts_stop_end_timestamp != 0 && now > tts_stop_end_timestamp) {
                 ws_.text(true);
-                co_await ws_.async_write(net::buffer(R"({"type":"tts","state":"stop"}")"), net::use_awaitable);
+                const std::string_view data = R"({"type":"tts","state":"stop"})";
+                co_await ws_.async_write(net::buffer(data.data(), data.size()), net::use_awaitable);
                 tts_stop_end_timestamp = 0;
                 BOOST_LOG_TRIVIAL(debug) << "tts end:" << now;
             }
@@ -120,7 +136,7 @@ namespace xiaozhi {
                 co_return;
             }
         }
-        dialogue_.push_back({"user", text});
+        dialogue_.push_back(boost::json::object{{"role", "user"}, {"content", text}});
         std::string message;
         size_t pos = 0;
         co_await llm_->response(dialogue_, [this, &message, &pos](std::string_view res) {
@@ -134,7 +150,7 @@ namespace xiaozhi {
         if(pos < message.size()) {
             push_llm_response(message.substr(pos));
         }
-        dialogue_.push_back({"assistant", message});
+        dialogue_.push_back(boost::json::object{{"role", "assistant"}, {"content", message}});
     }
 
     net::awaitable<void> Connection::send_welcome() {
@@ -192,10 +208,10 @@ namespace xiaozhi {
             auto [ec, _] = co_await ws_.async_read(buffer, net::as_tuple(net::use_awaitable));
             if(ec == websocket::error::closed) {
                 BOOST_LOG_TRIVIAL(debug) << "handle closed";
-                break;;
+                break;
             } else if(ec) {
                 BOOST_LOG_TRIVIAL(debug) << "handle error" << ec.message();
-                throw boost::system::system_error(ec);
+                break;
             }
             if(ws_.got_text()) {
                 co_await handle_text(buffer);
@@ -203,7 +219,13 @@ namespace xiaozhi {
                 co_await handle_binary(buffer);
             }
         }
-        BOOST_LOG_TRIVIAL(debug) << "handle over";
+        is_released_ = true;
+        BOOST_LOG_TRIVIAL(debug) << "handle begin over";
+        while(!is_tts_loop_over_) {
+            net::steady_timer timer(executor_, std::chrono::milliseconds(60));
+            co_await timer.async_wait(net::use_awaitable);
+        }
+        BOOST_LOG_TRIVIAL(debug) << "handle ended";
     }
 
     Connection::~Connection() {
