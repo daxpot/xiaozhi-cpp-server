@@ -15,7 +15,7 @@ namespace xiaozhi {
                 return std::make_unique<CozeV3>(executor, setting->config["LLM"][selected_module]);
             } else if(selected_module == "DifyLLM") {
                 return std::make_unique<Dify>(executor, setting->config["LLM"][selected_module]);
-            } else if(selected_module == "ChatGLMLLM") {
+            } else if(setting->config["LLM"][selected_module]["type"].IsDefined() && setting->config["LLM"][selected_module]["type"].as<std::string>() == "openai") {
                 return std::make_unique<Openai>(executor, setting->config["LLM"][selected_module]);
             } else {
                 throw std::invalid_argument("Selected_module LLM not be supported");

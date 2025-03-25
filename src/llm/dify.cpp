@@ -37,6 +37,7 @@ namespace xiaozhi {
                     for(auto it = dialogue.rbegin(); it != dialogue.rend(); --it) {
                         if(it->at("role").as_string() == "user") {
                             query = it->at("content").as_string();
+                            break;
                         }
                     }
                     const std::string url = std::format("{}/chat-messages", base_url_);

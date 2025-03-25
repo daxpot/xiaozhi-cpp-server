@@ -53,6 +53,7 @@ namespace xiaozhi {
                     for(auto it = dialogue.rbegin(); it != dialogue.rend(); --it) {
                         if(it->at("role").as_string() == "user") {
                             query = it->at("content").as_string();
+                            break;
                         }
                     }
                     const std::string url = std::format("https://api.coze.cn/v3/chat?conversation_id={}", conversation_id_);
