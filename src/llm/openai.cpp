@@ -1,3 +1,5 @@
+#include <boost/json/object.hpp>
+#include <exception>
 #include <xz-cpp-server/llm/openai.h>
 #include <boost/algorithm/string.hpp>
 #include <boost/log/trivial.hpp>
@@ -50,7 +52,13 @@ namespace xiaozhi {
                             if(line.size() == 0)
                                 continue;
                             if(line.starts_with("data:") && line != "data: [DONE]") {
-                                auto rej = boost::json::parse(std::string_view(line.data() + 5, line.size() - 5)).as_object();
+                                boost::json::object rej;
+                                try {
+                                    rej = boost::json::parse(std::string_view(line.data() + 5, line.size() - 5)).as_object();
+                                } catch(std::exception e) {
+                                    BOOST_LOG_TRIVIAL(error) << "llm can't parse response:" << line;
+                                    continue;
+                                }
                                 if(rej.contains("choices")) {
                                     for(auto& value : rej["choices"].as_array()) {
                                         auto& item = value.as_object();
@@ -70,6 +78,8 @@ namespace xiaozhi {
                                         }
                                     }
                                 }
+                            } else if(line != "data: [DONE]") {
+                                BOOST_LOG_TRIVIAL(info) << "llm response wierd:" << line;
                             }
                         }
                     });

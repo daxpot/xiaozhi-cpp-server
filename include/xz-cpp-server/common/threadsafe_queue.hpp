@@ -27,6 +27,11 @@ class ThreadSafeQueue {
             data.pop();
             return true;
         }
+
+        void clear() {
+            std::lock_guard<std::mutex> lk(mutex);
+            std::queue<T>().swap(data);
+        }
         
         bool empty() const {
             std::lock_guard<std::mutex> lk(mutex);

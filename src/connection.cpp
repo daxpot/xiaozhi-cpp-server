@@ -74,6 +74,12 @@ namespace xiaozhi {
                 co_await timer.async_wait(net::use_awaitable);
             } else {
                 BOOST_LOG_TRIVIAL(info) << "获取大模型输出:" << text;
+                if(text == "<abort>") {
+                    std::queue<std::pair<std::string, long long>>().swap(tts_sentence_queue);
+                    const std::string_view data = R"({"type":"tts","state":"stop"})";
+                    co_await ws_.async_write(net::buffer(data.data(), data.size()), net::use_awaitable);
+                    continue;
+                }
                 if(tts_stop_end_timestamp == 0) {
                     ws_.text(true);
                     const std::string_view data = R"({"type":"tts","state":"start"})";
@@ -173,6 +179,9 @@ namespace xiaozhi {
         if(data["type"] == "hello") {
             co_await send_welcome();
         } else if(data["type"] == "listen" && data["state"] == "detect") {
+        } else if(data["type"] == "abort") {
+            llm_response_.clear();
+            llm_response_.push("<abort>");
         }
         co_return;
     }
