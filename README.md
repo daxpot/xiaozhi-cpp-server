@@ -1,11 +1,11 @@
-# 小智 ESP-32 c++后端服务 (xz-cpp-server)
+# 小智 ESP-32 C++后端服务 (xz-cpp-server)
 
 本项目为开源智能硬件项目 [xiaozhi-esp32](https://github.com/78/xiaozhi-esp32)
 提供后端服务。根据 [小智通信协议](https://ccnphfhqs21z.feishu.cn/wiki/M0XiwldO9iJwHikpXD5cEx71nKh) 使用 `C++` 实现。
 
 项目根据Python版本的[xiaozhi-esp32-server](https://github.com/xinnan-tech/xiaozhi-esp32-server)改版
 
-基于BOOST, c++20协程开发。
+基于BOOST, C++20协程开发。
 
 ---
 
