@@ -78,6 +78,7 @@ namespace xiaozhi {
                     std::queue<std::pair<std::string, long long>>().swap(tts_sentence_queue);
                     const std::string_view data = R"({"type":"tts","state":"stop"})";
                     co_await ws_.async_write(net::buffer(data.data(), data.size()), net::use_awaitable);
+                    tts_stop_end_timestamp = 0;
                     continue;
                 }
                 if(tts_stop_end_timestamp == 0) {
