@@ -3,11 +3,11 @@
  * MIT License  (https://opensource.org/licenses/MIT)
 */
 
-#include "xz-cpp-server/paraformer/paraformer.h"
-#include "xz-cpp-server/paraformer/commonfunc.h"
+#include "funasr/paraformer/paraformer.h"
+#include "funasr/paraformer/commonfunc.h"
 #include <fstream>
 #include <yaml-cpp/yaml.h>
-#include "xz-cpp-server/paraformer/utils.h"
+#include "funasr/paraformer/utils.h"
 
 namespace funasr {
 

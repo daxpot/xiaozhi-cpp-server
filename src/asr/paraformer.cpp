@@ -9,8 +9,8 @@
 #include <vector>
 #include <xz-cpp-server/asr/paraformer.h>
 #include <xz-cpp-server/common/threadsafe_queue.hpp>
-#include <xz-cpp-server/paraformer/model.h>
-#include <xz-cpp-server/paraformer/paraformer-online.h>
+#include <funasr/paraformer/model.h>
+#include <funasr/paraformer/paraformer-online.h>
 
 namespace xiaozhi {
     namespace asr {

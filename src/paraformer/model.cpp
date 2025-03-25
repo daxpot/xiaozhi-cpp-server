@@ -1,7 +1,7 @@
-#include <xz-cpp-server/paraformer/model.h>
-#include <xz-cpp-server/paraformer/paraformer-online.h>
-#include <xz-cpp-server/paraformer/paraformer.h>
-#include <xz-cpp-server/paraformer/utils.h>
+#include <funasr/paraformer/model.h>
+#include <funasr/paraformer/paraformer-online.h>
+#include <funasr/paraformer/paraformer.h>
+#include <funasr/paraformer/utils.h>
 
 namespace funasr {
 Model *CreateModel(std::map<std::string, std::string>& model_path, int thread_num)

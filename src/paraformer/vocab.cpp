@@ -1,7 +1,7 @@
 #include <boost/json/array.hpp>
 #include <boost/json/parse.hpp>
 #include <boost/log/trivial.hpp>
-#include <xz-cpp-server/paraformer/vocab.h>
+#include <funasr/paraformer/vocab.h>
 #include <yaml-cpp/yaml.h>
 #include <fstream>
 #include <iostream>

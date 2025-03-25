@@ -2,8 +2,8 @@
  * Copyright FunASR (https://github.com/alibaba-damo-academy/FunASR). All Rights Reserved.
  * MIT License  (https://opensource.org/licenses/MIT)
 */
-#include "xz-cpp-server/paraformer/seg-dict.h"
-#include "xz-cpp-server/paraformer/utils.h"
+#include "funasr/paraformer/seg-dict.h"
+#include "funasr/paraformer/utils.h"
 
 #include <boost/log/trivial.hpp>
 #include <fstream>

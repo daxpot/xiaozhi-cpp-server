@@ -2,7 +2,7 @@
 #include <cstddef>
 #include <format>
 #include <fstream>
-#include <xz-cpp-server/paraformer/model.h>
+#include <funasr/paraformer/model.h>
 #include <xz-cpp-server/config/logger.h>
 #include <opus/opus.h>
 

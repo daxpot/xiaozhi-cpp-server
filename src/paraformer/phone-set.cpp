@@ -1,5 +1,5 @@
 #include <iterator>
-#include <xz-cpp-server/paraformer/phone-set.h>
+#include <funasr/paraformer/phone-set.h>
 #include <yaml-cpp/yaml.h>
 #include <fstream>
 #include <string>

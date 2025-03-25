@@ -1,6 +1,6 @@
 #include <cmath>
 #include <sstream>
-#include <xz-cpp-server/paraformer/utils.h>
+#include <funasr/paraformer/utils.h>
 
 namespace funasr {
     std::string PathAppend(const std::string &p1, const std::string &p2) {

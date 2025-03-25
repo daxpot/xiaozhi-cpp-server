@@ -5,8 +5,8 @@
 
 #include <boost/log/trivial.hpp>
 #include <numeric>
-#include <xz-cpp-server/paraformer/paraformer-online.h>
-#include <xz-cpp-server/paraformer/paraformer.h>
+#include <funasr/paraformer/paraformer-online.h>
+#include <funasr/paraformer/paraformer.h>
 
 using namespace std;
 
