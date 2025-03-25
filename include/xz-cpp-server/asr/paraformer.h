@@ -1,0 +1,19 @@
+#pragma once
+#include <xz-cpp-server/asr/base.h>
+#include <boost/asio.hpp>
+#include <yaml-cpp/yaml.h>
+
+namespace xiaozhi {
+    namespace asr {
+        class Paraformer: public Base {
+            public:
+                Paraformer(const net::any_io_executor& executor, const YAML::Node& config);
+                ~Paraformer();
+                void detect_opus(std::optional<beast::flat_buffer> buf) override;
+                void on_detect(const std::function<void(std::string)>& callback) override;
+            private:
+                class Impl;
+                std::unique_ptr<Impl> impl_;
+        };
+    }
+}

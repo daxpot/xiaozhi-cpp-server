@@ -3,3 +3,4 @@ build
 __pycache__/
 tmp/
 config.yaml
+models/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-online

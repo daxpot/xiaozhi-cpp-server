@@ -19,6 +19,8 @@ find_library(OPUS_LIBRARY NAMES opus)
 find_library(ONNXRUNTIME_LIB NAMES onnxruntime PATHS "extern/onnxruntime-linux-x64-1.21.0/lib"  NO_DEFAULT_PATH)
 include_directories("${PROJECT_SOURCE_DIR}/extern/onnxruntime-linux-x64-1.21.0/include")
 
+add_subdirectory(extern/kaldi-native-fbank)
+include_directories("${PROJECT_SOURCE_DIR}/extern/kaldi-native-fbank")
 add_subdirectory(extern/yaml-cpp)
 add_subdirectory(apps)
 add_subdirectory(src)

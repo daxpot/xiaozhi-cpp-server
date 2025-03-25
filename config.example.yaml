@@ -38,18 +38,19 @@ CMD_exit:
 
 # 具体处理时选择的模块(The module selected for specific processing)
 selected_module:
-  ASR: BytedanceASRV2
+  ASR: Paraformer
   VAD: SileroVAD
   # 将根据配置名称对应的type调用实际的LLM适配器
-  LLM: CozeLLMV3
+  LLM: ChatGLMLLM
   # TTS将根据配置名称对应的type调用实际的TTS适配器
-  TTS: BytedanceTTSV3
+  TTS: EdgeTTS
 
 ASR:
-  FunASR:
-    type: fun_local
-    model_dir: models/SenseVoiceSmall
-    output_dir: tmp/
+  Paraformer:
+    #使用命令:funasr-export ++model=paraformer-zh-streaming ++quantize=true  导出onnx模型，导出的目录填到下面去
+    model_dir: funasr的paraformer online模型目录
+    quantize: true #使用量化模型
+    thread_num: 4
   BytedanceASRV2:
     appid: 你的火山引擎语音合成服务appid
     access_token: 你的火山引擎语音合成服务access_token

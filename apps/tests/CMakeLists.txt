@@ -13,3 +13,7 @@ target_link_libraries(tests_tts PUBLIC tts)
 
 target_link_libraries(tests_llm PUBLIC config_logger)
 target_link_libraries(tests_llm PUBLIC llm)
+
+target_link_libraries(tests_paraformer PUBLIC config_logger)
+target_link_libraries(tests_paraformer PUBLIC paraformer)
+target_link_libraries(tests_paraformer PUBLIC ${OPUS_LIBRARY})

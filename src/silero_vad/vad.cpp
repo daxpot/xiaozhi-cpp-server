@@ -8,7 +8,7 @@ namespace xiaozhi {
     Vad::Vad(std::shared_ptr<Setting> setting) {
         int error;
         decoder_ = opus_decoder_create(16000, 1, &error);
-        if (error != OPUS_OK) throw std::runtime_error("Opus 解码器初始化失败");
+        if (error != OPUS_OK) throw std::runtime_error("Vad Opus 解码器初始化失败");
         threshold_ = setting->config["VAD"]["SileroVAD"]["threshold"].as<float>();
     }
 

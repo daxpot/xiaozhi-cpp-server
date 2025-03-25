@@ -7,3 +7,6 @@
 [submodule "extern/yaml-cpp"]
 	path = extern/yaml-cpp
 	url = https://github.com/jbeder/yaml-cpp.git
+[submodule "extern/kaldi-native-fbank"]
+	path = extern/kaldi-native-fbank
+	url = https://github.com/csukuangfj/kaldi-native-fbank.git

@@ -74,7 +74,7 @@ namespace xiaozhi {
                 net::steady_timer timer(executor_, std::chrono::milliseconds(60));
                 co_await timer.async_wait(net::use_awaitable);
             } else {
-                BOOST_LOG_TRIVIAL(debug) << "获取大模型输出:" << text;
+                BOOST_LOG_TRIVIAL(info) << "获取大模型输出:" << text;
                 auto tts = tts::createTTS(executor_);
                 if(tts_stop_end_timestamp == 0) {
                     ws_.text(true);
@@ -106,7 +106,7 @@ namespace xiaozhi {
                 };
                 co_await ws_.async_write(net::buffer(boost::json::serialize(obj)), net::use_awaitable);
                 tts_sentence_queue.pop();
-                BOOST_LOG_TRIVIAL(debug) << "tts sentence start:" << front.first << ",now:" << now << ",plan:" << front.second;
+                // BOOST_LOG_TRIVIAL(debug) << "tts sentence start:" << front.first << ",now:" << now << ",plan:" << front.second;
             }
             now = tools::get_tms();
             if(tts_stop_end_timestamp != 0 && now > tts_stop_end_timestamp) {
