@@ -54,7 +54,7 @@ namespace xiaozhi {
                     while(!is_released_) {
                         std::optional<beast::flat_buffer> buf;
                         if(!queue.try_pop(buf)) {
-                            net::steady_timer timer(executor_, std::chrono::milliseconds(60));
+                            net::steady_timer timer(executor_, std::chrono::milliseconds(20));
                             co_await timer.async_wait(net::use_awaitable);
                             continue;
                         }
@@ -80,8 +80,6 @@ namespace xiaozhi {
                             on_detect_cb_(std::move(full_result));
                         }
                     }
-                    //需要释放Connection的share指针，避免循环引用
-                    on_detect_cb_ = nullptr;
                     BOOST_LOG_TRIVIAL(info) << "Paraformer loop over";
                 }
             public:
@@ -98,8 +96,6 @@ namespace xiaozhi {
                                 std::rethrow_exception(e);
                             } catch(std::exception& e) {
                                 BOOST_LOG_TRIVIAL(error) << "Paraformer run error:" << e.what();
-                            } catch(...) {
-                                BOOST_LOG_TRIVIAL(error) << "Paraformer run unknown error";
                             }
                         }
                     });
@@ -107,9 +103,7 @@ namespace xiaozhi {
                 
 
                 ~Impl() {
-                    is_released_ = true;
-                    delete online_model;
-                    opus_decoder_destroy(decoder_);
+                    shutdown();
                     BOOST_LOG_TRIVIAL(debug) << "Paraformer asr destroyed";
                 }
 
@@ -123,6 +117,14 @@ namespace xiaozhi {
 
                 void shutdown() {
                     is_released_ = true;
+                    if(online_model) {
+                        delete online_model;
+                        online_model = nullptr;
+                    }
+                    if(decoder_) {
+                        opus_decoder_destroy(decoder_);
+                        decoder_ = nullptr;
+                    }
                 }
         };
 

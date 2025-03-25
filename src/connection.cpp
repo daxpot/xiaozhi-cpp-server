@@ -1,10 +1,13 @@
+#include <boost/asio/as_tuple.hpp>
 #include <boost/asio/co_spawn.hpp>
 #include <boost/asio/registered_buffer.hpp>
 #include <boost/asio/use_awaitable.hpp>
 #include <boost/beast/core/bind_handler.hpp>
+#include <boost/beast/websocket/rfc6455.hpp>
 #include <boost/json/object.hpp>
 #include <boost/log/trivial.hpp>
 #include <chrono>
+#include <exception>
 #include <memory>
 #include <queue>
 #include <regex>
@@ -37,18 +40,18 @@ namespace xiaozhi {
     }
 
     void Connection::init_loop() {
-        asr_->on_detect([that=shared_from_this()](std::string text) {
-            net::co_spawn(that->executor_, that->on_asr_detect(std::move(text)), [](std::exception_ptr e) {
-                if(e) {
-                    try {
-                        std::rethrow_exception(e);
-                    } catch(std::exception& e) {
-                        BOOST_LOG_TRIVIAL(error) << "Connection asr detect spawn error:" << e.what();
-                    } catch(...) {
-                        BOOST_LOG_TRIVIAL(error) << "Connection asr detect spawn unknown error";
+        asr_->on_detect([weak_self=std::weak_ptr<Connection>(shared_from_this())](std::string text) {
+            if (auto self = weak_self.lock()) {
+                net::co_spawn(self->executor_, self->on_asr_detect(std::move(text)), [](std::exception_ptr e) {
+                    if(e) {
+                        try {
+                            std::rethrow_exception(e);
+                        } catch(std::exception& e) {
+                            BOOST_LOG_TRIVIAL(error) << "Connection asr detect spawn error:" << e.what();
+                        }
                     }
-                }
-            });
+                });
+            }
         });
         net::co_spawn(executor_, tts_loop(), [that=shared_from_this()](std::exception_ptr e) {
             if(e) {
@@ -56,8 +59,6 @@ namespace xiaozhi {
                     std::rethrow_exception(e);
                 } catch(std::exception& e) {
                     BOOST_LOG_TRIVIAL(error) << "Connection tts loop spawn error:" << e.what();
-                } catch(...) {
-                    BOOST_LOG_TRIVIAL(error) << "Connection tts loop spawn unknown error";
                 }
             }
         });
@@ -229,11 +230,13 @@ namespace xiaozhi {
         }
         is_released_ = true;
         asr_->shutdown();
+        //等待asr shutdown
+        co_await net::steady_timer(executor_, std::chrono::milliseconds(100)).async_wait(net::use_awaitable);
         BOOST_LOG_TRIVIAL(debug) << "handle ended";
     }
 
     Connection::~Connection() {
         is_released_ = true;
-        BOOST_LOG_TRIVIAL(info) << "Connection closed";
+        BOOST_LOG_TRIVIAL(info) << "Connection destroyed";
     }
 }

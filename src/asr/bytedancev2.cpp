@@ -300,7 +300,7 @@ namespace xiaozhi {
                     while(!is_released_) {
                         std::optional<beast::flat_buffer> buf;
                         if(!queue.try_pop(buf)) {
-                            net::steady_timer timer(executor_, std::chrono::milliseconds(60));
+                            net::steady_timer timer(executor_, std::chrono::milliseconds(20));
                             co_await timer.async_wait(net::use_awaitable);
                             continue;
                         }
@@ -325,8 +325,6 @@ namespace xiaozhi {
                             co_await send(std::string(data.begin(), data.end()), false);
                         }
                     }
-                    //需要释放Connection的share指针，避免循环引用
-                    on_detect_cb_ = nullptr;
                     BOOST_LOG_TRIVIAL(info) << "BytedanceASRV2 loop over";
                 }
                 net::awaitable<void> send(std::string audio, bool is_last) {
@@ -383,15 +381,13 @@ namespace xiaozhi {
                                     std::rethrow_exception(e);
                                 } catch(std::exception& e) {
                                     BOOST_LOG_TRIVIAL(error) << "BytedanceASRV2 run error:" << e.what();
-                                } catch(...) {
-                                    BOOST_LOG_TRIVIAL(error) << "BytedanceASRV2 run unknown error";
                                 }
                             }
                         });
                 }
 
                 ~Impl() {
-                    is_released_ = true;
+                    shutdown();
                 }
 
                 void detect_opus(std::optional<beast::flat_buffer> buf) {
