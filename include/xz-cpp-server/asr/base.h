@@ -7,9 +7,10 @@ namespace xiaozhi {
     namespace asr {
         class Base {
             public:
-                virtual ~Base()=default;
+                virtual ~Base();
                 virtual void detect_opus(std::optional<beast::flat_buffer> buf) = 0;
                 virtual void on_detect(const std::function<void(std::string)>& callback) = 0;
+                virtual void shutdown() = 0;
         };
         std::unique_ptr<Base> createASR(const net::any_io_executor& executor);
     }

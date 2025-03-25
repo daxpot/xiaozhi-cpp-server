@@ -325,6 +325,8 @@ namespace xiaozhi {
                             co_await send(std::string(data.begin(), data.end()), false);
                         }
                     }
+                    //需要释放Connection的share指针，避免循环引用
+                    on_detect_cb_ = nullptr;
                     BOOST_LOG_TRIVIAL(info) << "BytedanceASRV2 loop over";
                 }
                 net::awaitable<void> send(std::string audio, bool is_last) {
@@ -399,6 +401,10 @@ namespace xiaozhi {
                 void on_detect(const std::function<void(std::string)>& callback) {
                     on_detect_cb_ = callback;
                 }
+
+                void shutdown() {
+                    is_released_ = true;
+                }
         };
 
         BytedanceV2::BytedanceV2(const net::any_io_executor& executor, const YAML::Node& config) {
@@ -415,6 +421,10 @@ namespace xiaozhi {
 
         void BytedanceV2::on_detect(const std::function<void(std::string)>& callback) {
             return impl_->on_detect(callback);
+        }
+
+        void BytedanceV2::shutdown() {
+            return impl_->shutdown();
         }
     }
 }

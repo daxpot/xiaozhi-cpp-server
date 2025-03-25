@@ -1,6 +1,7 @@
 #include <boost/asio/buffer.hpp>
 #include <boost/asio/this_coro.hpp>
 #include <boost/log/trivial.hpp>
+#include <memory>
 #include <xz-cpp-server/server.h>
 #include <xz-cpp-server/connection.h>
 
@@ -42,8 +43,9 @@ namespace xiaozhi {
         }
         co_await ws.async_accept(req, net::use_awaitable);
         auto executor = co_await net::this_coro::executor;
-        Connection conn {setting, std::move(ws), executor};
-        co_await conn.handle();
+        auto conn = std::make_shared<Connection>(setting, std::move(ws), executor);
+        conn->init_loop();
+        co_await conn->handle();
     }
 
     net::awaitable<void> Server::listen(net::ip::tcp::endpoint endpoint) {

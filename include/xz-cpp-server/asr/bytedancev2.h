@@ -11,6 +11,7 @@ namespace xiaozhi {
                 ~BytedanceV2();
                 void detect_opus(std::optional<beast::flat_buffer> buf) override;
                 void on_detect(const std::function<void(std::string)>& callback) override;
+                void shutdown() override;
             private:
                 class Impl;
                 std::unique_ptr<Impl> impl_;

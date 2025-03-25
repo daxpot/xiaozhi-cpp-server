@@ -12,9 +12,6 @@
 #include <xz-cpp-server/connection.h>
 #include <xz-cpp-server/common/tools.h>
 #include <boost/json.hpp>
-#include <xz-cpp-server/tts/base.h>
-#include <xz-cpp-server/llm/base.h>
-#include <xz-cpp-server/asr/base.h>
 
 namespace xiaozhi {
     Connection::Connection(std::shared_ptr<Setting> setting, websocket::stream<beast::tcp_stream> ws, net::any_io_executor executor):
@@ -35,33 +32,35 @@ namespace xiaozhi {
             min_silence_tms_ = setting->config["VAD"]["SileroVAD"]["min_silence_duration_ms"].as<int>();
             close_connection_no_voice_time_ = setting->config["close_connection_no_voice_time"].as<int>(),
             asr_ = asr::createASR(executor_);
-            // asr_->on_detect(beast::bind_front_handler(&Connection::on_asr_detect, this));
-            asr_->on_detect([this](std::string text) {
-                net::co_spawn(executor_, this->on_asr_detect(std::move(text)), [](std::exception_ptr e) {
-                    if(e) {
-                        try {
-                            std::rethrow_exception(e);
-                        } catch(std::exception& e) {
-                            BOOST_LOG_TRIVIAL(error) << "Connection asr detect spawn error:" << e.what();
-                        } catch(...) {
-                            BOOST_LOG_TRIVIAL(error) << "Connection asr detect spawn unknown error";
-                        }
-                    }
-                });
-            });
             llm_ = llm::createLLM(executor_);
-            net::co_spawn(executor_, tts_loop(), [this](std::exception_ptr e) {
-                is_tts_loop_over_ = true;
+            tts_ = tts::createTTS(executor_);
+    }
+
+    void Connection::init_loop() {
+        asr_->on_detect([that=shared_from_this()](std::string text) {
+            net::co_spawn(that->executor_, that->on_asr_detect(std::move(text)), [](std::exception_ptr e) {
                 if(e) {
                     try {
                         std::rethrow_exception(e);
                     } catch(std::exception& e) {
-                        BOOST_LOG_TRIVIAL(error) << "Connection tts loop spawn error:" << e.what();
+                        BOOST_LOG_TRIVIAL(error) << "Connection asr detect spawn error:" << e.what();
                     } catch(...) {
-                        BOOST_LOG_TRIVIAL(error) << "Connection tts loop spawn unknown error";
+                        BOOST_LOG_TRIVIAL(error) << "Connection asr detect spawn unknown error";
                     }
                 }
             });
+        });
+        net::co_spawn(executor_, tts_loop(), [that=shared_from_this()](std::exception_ptr e) {
+            if(e) {
+                try {
+                    std::rethrow_exception(e);
+                } catch(std::exception& e) {
+                    BOOST_LOG_TRIVIAL(error) << "Connection tts loop spawn error:" << e.what();
+                } catch(...) {
+                    BOOST_LOG_TRIVIAL(error) << "Connection tts loop spawn unknown error";
+                }
+            }
+        });
     }
 
     net::awaitable<void> Connection::tts_loop() {
@@ -75,7 +74,6 @@ namespace xiaozhi {
                 co_await timer.async_wait(net::use_awaitable);
             } else {
                 BOOST_LOG_TRIVIAL(info) << "获取大模型输出:" << text;
-                auto tts = tts::createTTS(executor_);
                 if(tts_stop_end_timestamp == 0) {
                     ws_.text(true);
                     const std::string_view data = R"({"type":"tts","state":"start"})";
@@ -84,7 +82,7 @@ namespace xiaozhi {
                     tts_stop_end_timestamp = now;
                     BOOST_LOG_TRIVIAL(debug) << "tts start:" << now;
                 }
-                auto audio = co_await tts->text_to_speak(text);
+                auto audio = co_await tts_->text_to_speak(text);
                 tts_sentence_queue.push({text, tts_stop_end_timestamp});
                 for(auto& data: audio) {
                     ws_.binary(true);
@@ -220,11 +218,7 @@ namespace xiaozhi {
             }
         }
         is_released_ = true;
-        BOOST_LOG_TRIVIAL(debug) << "handle begin over";
-        while(!is_tts_loop_over_) {
-            net::steady_timer timer(executor_, std::chrono::milliseconds(60));
-            co_await timer.async_wait(net::use_awaitable);
-        }
+        asr_->shutdown();
         BOOST_LOG_TRIVIAL(debug) << "handle ended";
     }
 

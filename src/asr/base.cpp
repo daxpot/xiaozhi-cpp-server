@@ -1,3 +1,4 @@
+#include <boost/log/trivial.hpp>
 #include <xz-cpp-server/asr/base.h>
 #include <xz-cpp-server/asr/bytedancev2.h>
 #include <xz-cpp-server/asr/paraformer.h>
@@ -15,6 +16,9 @@ namespace xiaozhi {
             } else {
                 throw std::invalid_argument("Selected_module ASR not be supported");
             }
+        }
+        Base::~Base() {
+            BOOST_LOG_TRIVIAL(debug) << "ASR base destroyed";
         }
     }
 }

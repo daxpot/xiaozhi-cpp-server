@@ -12,6 +12,7 @@
 #include <boost/beast.hpp>
 #include <xz-cpp-server/asr/base.h>
 #include <xz-cpp-server/llm/base.h>
+#include <xz-cpp-server/tts/base.h>
 #include <xz-cpp-server/common/threadsafe_queue.hpp>
 namespace net = boost::asio;
 namespace beast = boost::beast;
@@ -21,7 +22,6 @@ namespace xiaozhi {
     class Connection: public std::enable_shared_from_this<Connection> {
         private:
             std::atomic<bool> is_released_ = false;
-            std::atomic<bool> is_tts_loop_over_ = false;
             int min_silence_tms_ = 700;
             int close_connection_no_voice_time_ = 120;
             std::shared_ptr<Setting> setting_ = nullptr;
@@ -35,6 +35,7 @@ namespace xiaozhi {
             boost::asio::steady_timer silence_timer_;
             std::unique_ptr<asr::Base> asr_ = nullptr;
             std::unique_ptr<llm::Base> llm_ = nullptr;
+            std::unique_ptr<tts::Base> tts_ = nullptr;
             websocket::stream<beast::tcp_stream> ws_;
 
             void audio_silence_end(const boost::system::error_code& ec);
@@ -48,6 +49,7 @@ namespace xiaozhi {
         public:
             Connection(std::shared_ptr<Setting> setting, websocket::stream<beast::tcp_stream> ws, net::any_io_executor executor);
             ~Connection();
+            void init_loop();
             net::awaitable<void> handle();
     };
 }

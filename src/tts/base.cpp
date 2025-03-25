@@ -1,3 +1,4 @@
+#include <boost/log/trivial.hpp>
 #include <xz-cpp-server/tts/base.h>
 #include <xz-cpp-server/tts/bytedancev3.h>
 #include <xz-cpp-server/tts/edge.h>
@@ -15,6 +16,10 @@ namespace xiaozhi {
             } else {
                 throw std::invalid_argument("Selected_module TTS not be supported");
             }
+        }
+        
+        Base::~Base() {
+            BOOST_LOG_TRIVIAL(debug) << "TTS base destroyed";
         }
     }
 }

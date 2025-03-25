@@ -1,3 +1,4 @@
+#include <boost/log/trivial.hpp>
 #include <stdexcept>
 #include <xz-cpp-server/llm/base.h>
 #include <xz-cpp-server/llm/cozev3.h>
@@ -19,6 +20,9 @@ namespace xiaozhi {
             } else {
                 throw std::invalid_argument("Selected_module LLM not be supported");
             }
+        }
+        Base::~Base() {
+            BOOST_LOG_TRIVIAL(debug) << "LLM base destroyed";
         }
     }
 }
