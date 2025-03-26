@@ -8,6 +8,18 @@ server:
   # 服务器监听地址和端口(Server listening address and port)
   ip: 0.0.0.0
   port: 8000
+  # 认证配置
+  auth:
+    # 是否启用认证
+    enabled: false
+    # 设备的token，可以在编译固件的环节，写入你自己定义的token
+    # 固件上的token和以下的token如果能对应，才能连接本服务端
+    tokens:
+      - token: "your-token1" # 设备1的token
+        name: "your-device-name1"  # 设备1标识
+      - token: "your-token2"  # 设备2的token
+        name: "your-device-name2" # 设备2标识
+        
 log:
   # 设置日志等级：INFO、DEBUG
   log_level: INFO
