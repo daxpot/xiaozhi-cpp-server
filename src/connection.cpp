@@ -6,9 +6,11 @@
 #include <boost/beast/websocket/rfc6455.hpp>
 #include <boost/json/object.hpp>
 #include <boost/log/trivial.hpp>
+#include <boost/system/detail/error_code.hpp>
 #include <chrono>
 #include <exception>
 #include <memory>
+#include <optional>
 #include <queue>
 #include <regex>
 #include <string>
@@ -40,20 +42,16 @@ namespace xiaozhi {
     }
 
     void Connection::init_loop() {
-        asr_->on_detect([weak_self=std::weak_ptr<Connection>(shared_from_this())](std::string text) {
-            if (auto self = weak_self.lock()) {
-                net::co_spawn(self->executor_, self->on_asr_detect(std::move(text)), [](std::exception_ptr e) {
-                    if(e) {
-                        try {
-                            std::rethrow_exception(e);
-                        } catch(std::exception& e) {
-                            BOOST_LOG_TRIVIAL(error) << "Connection asr detect spawn error:" << e.what();
-                        }
-                    }
-                });
+        net::co_spawn(executor_, asr_loop(), [self=shared_from_this()](std::exception_ptr e) {
+            if(e) {
+                try {
+                    std::rethrow_exception(e);
+                } catch(std::exception& e) {
+                    BOOST_LOG_TRIVIAL(error) << "Connection asr loop spawn error:" << e.what();
+                }
             }
         });
-        net::co_spawn(executor_, tts_loop(), [that=shared_from_this()](std::exception_ptr e) {
+        net::co_spawn(executor_, tts_loop(), [self=shared_from_this()](std::exception_ptr e) {
             if(e) {
                 try {
                     std::rethrow_exception(e);
@@ -62,6 +60,29 @@ namespace xiaozhi {
                 }
             }
         });
+    }
+
+    net::awaitable<void> Connection::asr_loop() {
+        while(!is_released_) {
+            std::optional<beast::flat_buffer> buf;
+            if(!asr_audio_.try_pop(buf)) {
+                co_await net::steady_timer(executor_, std::chrono::milliseconds(20)).async_wait(net::use_awaitable);
+                continue;
+            }
+            auto text = co_await asr_->detect_opus(buf);
+            if(!buf && text.size() > 0) {
+                net::co_spawn(executor_, handle_asr_text(std::move(text)), [self=shared_from_this()](std::exception_ptr e) {
+                    if(e) {
+                        try {
+                            std::rethrow_exception(e);
+                        } catch(std::exception& e) {
+                            BOOST_LOG_TRIVIAL(error) << "Connection handle asr text spawn error:" << e.what();
+                        }
+                    }
+                });
+            }
+        }
+        BOOST_LOG_TRIVIAL(info) << "Connection asr loop over";
     }
 
     net::awaitable<void> Connection::tts_loop() {
@@ -134,8 +155,8 @@ namespace xiaozhi {
         }
     }
 
-    net::awaitable<void> Connection::on_asr_detect(std::string text) {
-        BOOST_LOG_TRIVIAL(info) << "Connection recv asr text:" << text;
+    net::awaitable<void> Connection::handle_asr_text(std::string text) {
+        BOOST_LOG_TRIVIAL(info) << "Connection handle asr text:" << text;
         for(auto& cmd : cmd_exit_) {
             if(text == cmd) {
                 is_released_ = true;
@@ -188,21 +209,17 @@ namespace xiaozhi {
         co_return;
     }
 
-    void Connection::audio_silence_end(const boost::system::error_code& ec) {
-        if(ec == net::error::operation_aborted) {
-            // BOOST_LOG_TRIVIAL(debug) << "定时器被取消!" << std::endl;
-            return;;
-        }
-        asr_->detect_opus(std::nullopt);
-    }
-
     net::awaitable<void> Connection::handle_binary(beast::flat_buffer &buffer) {
         if(vad_.is_vad(buffer)) {
             // BOOST_LOG_TRIVIAL(debug) << "收到声音(" << &ws_ << "):" << buffer.size();
-            asr_->detect_opus(std::move(buffer));
+            asr_audio_.push(std::move(buffer));
             silence_timer_.cancel();
             silence_timer_.expires_after(std::chrono::milliseconds(min_silence_tms_));
-            silence_timer_.async_wait(beast::bind_front_handler(&Connection::audio_silence_end, this));
+            silence_timer_.async_wait([self=shared_from_this()](const boost::system::error_code& ec) {
+                if(ec != net::error::operation_aborted) {
+                    self->asr_audio_.push(std::nullopt);
+                }
+            });
         } else {
             // BOOST_LOG_TRIVIAL(debug) << "收到音频(" << &ws_ << "):" << buffer.size();
         }
@@ -229,9 +246,6 @@ namespace xiaozhi {
             }
         }
         is_released_ = true;
-        asr_->shutdown();
-        //等待asr shutdown
-        co_await net::steady_timer(executor_, std::chrono::milliseconds(100)).async_wait(net::use_awaitable);
         BOOST_LOG_TRIVIAL(debug) << "handle ended";
     }
 

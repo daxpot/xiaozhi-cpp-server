@@ -12,9 +12,6 @@ net::awaitable<void> test() {
     auto executor = co_await net::this_coro::executor;
     auto setting = xiaozhi::Setting::getSetting();
     auto asr = xiaozhi::asr::createASR(executor);
-    asr->on_detect([](std::string text) {
-        BOOST_LOG_TRIVIAL(info) << "asr detect:" << text;
-    });
     for(size_t index=0; index <= 92; index++) {
         std::ifstream file(std::format("tmp/example/opus_data_{}.opus", index), std::ifstream::binary);
         std::vector<unsigned char> data((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
@@ -24,14 +21,10 @@ net::awaitable<void> test() {
         auto writable = buffer.prepare(data.size()); // 分配空间
         net::buffer_copy(writable, net::buffer(data)); // 复制数据
         buffer.commit(data.size()); // 提交数据
-        asr->detect_opus(buffer);
+        co_await asr->detect_opus(buffer);
     }
-    asr->detect_opus(std::nullopt);
-
-    while(true) {
-        net::steady_timer timer(executor, std::chrono::milliseconds(1000));
-        co_await timer.async_wait(net::use_awaitable);
-    }
+    auto text = co_await asr->detect_opus(std::nullopt);
+    BOOST_LOG_TRIVIAL(info) << "asr detect:" << text;
 }
 
 int main() {

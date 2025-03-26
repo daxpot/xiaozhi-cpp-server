@@ -9,9 +9,7 @@ namespace xiaozhi {
             public:
                 Paraformer(const net::any_io_executor& executor, const YAML::Node& config);
                 ~Paraformer();
-                void detect_opus(std::optional<beast::flat_buffer> buf) override;
-                void on_detect(const std::function<void(std::string)>& callback) override;
-                void shutdown() override;
+                net::awaitable<std::string> detect_opus(const std::optional<beast::flat_buffer>& buf) override;
             private:
                 class Impl;
                 std::unique_ptr<Impl> impl_;

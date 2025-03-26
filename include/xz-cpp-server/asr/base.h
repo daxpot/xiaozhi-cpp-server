@@ -1,4 +1,5 @@
 #pragma once
+#include <boost/asio/awaitable.hpp>
 #include <boost/beast.hpp>
 namespace net = boost::asio;
 namespace beast = boost::beast;
@@ -8,9 +9,7 @@ namespace xiaozhi {
         class Base {
             public:
                 virtual ~Base();
-                virtual void detect_opus(std::optional<beast::flat_buffer> buf) = 0;
-                virtual void on_detect(const std::function<void(std::string)>& callback) = 0;
-                virtual void shutdown() = 0;
+                virtual net::awaitable<std::string> detect_opus(const std::optional<beast::flat_buffer>& buf) = 0;
         };
         std::unique_ptr<Base> createASR(const net::any_io_executor& executor);
     }

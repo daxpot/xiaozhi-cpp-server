@@ -1,7 +1,9 @@
 #include <atomic>
 #include <boost/json/serialize.hpp>
+#include <cstdint>
 #include <memory>
 #include <optional>
+#include <vector>
 #include <xz-cpp-server/asr/bytedancev2.h>
 #include <boost/json.hpp>
 #include <xz-cpp-server/common/tools.h>
@@ -32,11 +34,11 @@ static std::vector<uint8_t> make_header(uint8_t msg_type, uint8_t flags, bool js
     return header;
 }
 
-static std::vector<uint8_t> build_payload(uint8_t msg_type, uint8_t flags, std::string payload_str) {
+static std::vector<uint8_t> build_payload(uint8_t msg_type, uint8_t flags, std::vector<uint8_t>& payload) {
     if(is_gzip) {
-        payload_str = tools::gzip_compress(payload_str);
+        auto payload_str = tools::gzip_compress(std::string(payload.begin(), payload.end()));
+        payload = std::vector<uint8_t>(payload_str.begin(), payload_str.end());
     }
-    std::vector<uint8_t> payload(payload_str.begin(), payload_str.end());
     
     auto data = make_header(msg_type, flags, true, is_gzip); // Full client request, JSON, Gzip
     uint32_t payload_size = payload.size();
@@ -185,9 +187,6 @@ namespace xiaozhi {
                 net::any_io_executor executor_;
                 std::unique_ptr<wss_stream> ws_;
                 std::unique_ptr<OggOpusStreamer> ogg_streamer_;
-                
-                ThreadSafeQueue<std::optional<beast::flat_buffer>> queue;
-                std::function<void(std::string)> on_detect_cb_;
 
                 void clear(std::string_view title, beast::error_code ec=beast::error_code{}) {
                     ws_ = nullptr;
@@ -198,11 +197,20 @@ namespace xiaozhi {
                     }
                 }
 
-                net::awaitable<bool> connect(tcp::resolver::results_type ep) {
+                net::awaitable<bool> connect() {
                     BOOST_LOG_TRIVIAL(debug) << "BytedanceASRV2 begin connect";
                     ws_state_ = WebsocketState::Connecting;
+                    
+                    tcp::resolver resolver {co_await net::this_coro::executor};
+                    auto [ec, results] = co_await resolver.async_resolve(host, port, net::as_tuple(net::use_awaitable));
+                    if(ec) {
+                        clear("BytedanceASRV2 resolve:", ec);
+                        co_return false;
+                    }
+                    
                     ws_ = std::make_unique<wss_stream>(executor_, ctx_);
-                    auto [ec, _] = co_await beast::get_lowest_layer(*ws_).async_connect(ep, net::as_tuple(net::use_awaitable));
+                    tcp::endpoint ep;
+                    std::tie(ec, ep) = co_await beast::get_lowest_layer(*ws_).async_connect(results, net::as_tuple(net::use_awaitable));
                     if(ec) {
                         clear("BytedanceASRV2 connect:", ec);
                         co_return false;
@@ -266,7 +274,9 @@ namespace xiaozhi {
                             }
                         }
                     };
-                    auto data = build_payload(0x1, 0x0, json::serialize(obj));
+                    auto payload_str = json::serialize(obj);
+                    auto payload = std::vector<uint8_t>(payload_str.begin(), payload_str.end());
+                    auto data = build_payload(0x1, 0x0, payload);
                     ws_->binary(true);
                     auto [ec, bytes_transferred] = co_await ws_->async_write(net::buffer(data), net::as_tuple(net::use_awaitable));
                     if(ec) {
@@ -290,79 +300,39 @@ namespace xiaozhi {
                     co_return true;
                 }
 
-                net::awaitable<void> run() {
-                    tcp::resolver resolver {co_await net::this_coro::executor};
-                    auto [ec, ep] = co_await resolver.async_resolve(host, port, net::as_tuple(net::use_awaitable));
-                    if(ec) {
-                        clear("BytedanceASRV2 resolve:", ec);
-                        co_return;
-                    }
-                    while(!is_released_) {
-                        std::optional<beast::flat_buffer> buf;
-                        if(!queue.try_pop(buf)) {
-                            net::steady_timer timer(executor_, std::chrono::milliseconds(20));
-                            co_await timer.async_wait(net::use_awaitable);
-                            continue;
-                        }
-                        if(ws_state_ == WebsocketState::Idle) {
-                            if(!co_await connect(ep)) {
-                                continue;
-                            }
-                            ogg_streamer_ = std::make_unique<OggOpusStreamer>();
-                            auto data = ogg_streamer_->build_id_headers();
-                            co_await send(std::string(data.begin(), data.end()), false);
-                            data = ogg_streamer_->build_comment_headers();
-                            co_await send(std::string(data.begin(), data.end()), false);
-                        }
-                        if(!buf) {
-                            auto data = ogg_streamer_->process_buffer({}, true);
-                            co_await send(std::string(data.begin(), data.end()), true);
-                            auto [ec] = co_await ws_->async_close(websocket::close_code::normal, net::as_tuple(net::use_awaitable));
-                            clear("BytedanceASRV2 websocket close:", ec);
-                            BOOST_LOG_TRIVIAL(info) << "BytedanceASRV2 websocket closed";
-                        } else {
-                            auto data = ogg_streamer_->process_buffer(buf.value(), false);
-                            co_await send(std::string(data.begin(), data.end()), false);
-                        }
-                    }
-                    BOOST_LOG_TRIVIAL(info) << "BytedanceASRV2 loop over";
-                }
-                net::awaitable<void> send(std::string audio, bool is_last) {
-                    std::vector<uint8_t> data;
-                    data = build_payload(0x2, is_last ? 0x2 : 0x0, audio);
+                net::awaitable<std::string> send(std::vector<uint8_t>& audio, bool is_last) {
+                    std::string sentence;
+                    std::vector<uint8_t> data = build_payload(0x2, is_last ? 0x2 : 0x0, audio);
                     ws_->binary(true);
                     auto [ec, bytes_transferred] = co_await ws_->async_write(net::buffer(data), net::as_tuple(net::use_awaitable));
                     if(ec) {
                         clear("BytedanceASRV2 send audio:", ec);
-                        co_return;
+                        co_return sentence;
                     }
                     if(is_last) {
-                        while(!is_released_) {
+                        while(true) {
                             beast::flat_buffer buffer;
                             std::tie(ec, bytes_transferred) = co_await ws_->async_read(buffer, net::as_tuple(net::use_awaitable));
                             if(ec) {
                                 clear("BytedanceASRV2 recv server:", ec);
-                                co_return;
+                                co_return sentence;
                             }
                             auto rej = parse_response(beast::buffers_to_string(buffer.data()), is_gzip);
                             if(!rej || rej->at("code").as_int64() != 1000) {
                                 BOOST_LOG_TRIVIAL(error) << "BytedanceASRV2 recv error:" << (rej ?  json::serialize(rej.value()) : "");
-                                co_return;
+                                co_return sentence;
                             }
                             if(rej->contains("result") && rej->at("sequence").as_int64() < 0) {
                                 auto& result = rej->at("result").as_array();
                                 BOOST_LOG_TRIVIAL(info) << "BytedanceASRV2 detect:" << json::serialize(rej.value());
-                                std::string sentence;
                                 for(const auto &item : result) {
                                     sentence += item.at("text").as_string();
                                 }
-                                if(on_detect_cb_) {
-                                    on_detect_cb_(std::move(sentence));
-                                }
-                                break;
+                                co_return sentence;
                             }
                         }
                     }
+                    co_return sentence;
                 }
             public:
                 Impl(const net::any_io_executor& executor, const YAML::Node& config):
@@ -371,35 +341,37 @@ namespace xiaozhi {
                     cluster_(config["cluster"].as<std::string>()),
                     ctx_(ssl::context::tlsv13_client),
                     executor_(executor) {
-                        
                         ctx_.set_verify_mode(ssl::verify_peer);
                         ctx_.set_default_verify_paths();
-
-                        net::co_spawn(executor, run(), [](std::exception_ptr e) {
-                            if(e) {
-                                try {
-                                    std::rethrow_exception(e);
-                                } catch(std::exception& e) {
-                                    BOOST_LOG_TRIVIAL(error) << "BytedanceASRV2 run error:" << e.what();
-                                }
-                            }
-                        });
                 }
 
                 ~Impl() {
-                    shutdown();
+                    BOOST_LOG_TRIVIAL(debug) << "BytedanceASRV2 destroyed";
                 }
 
-                void detect_opus(std::optional<beast::flat_buffer> buf) {
-                    queue.push(std::move(buf));
-                }
-
-                void on_detect(const std::function<void(std::string)>& callback) {
-                    on_detect_cb_ = callback;
-                }
-
-                void shutdown() {
-                    is_released_ = true;
+                net::awaitable<std::string> detect_opus(const std::optional<beast::flat_buffer>& buf) {
+                    std::string sentence;
+                    if(ws_state_ == WebsocketState::Idle) {
+                        if(!co_await connect()) {
+                            co_return sentence;
+                        }
+                        ogg_streamer_ = std::make_unique<OggOpusStreamer>();
+                        auto data = ogg_streamer_->build_id_headers();
+                        co_await send(data, false);
+                        data = ogg_streamer_->build_comment_headers();
+                        co_await send(data, false);
+                    }
+                    if(!buf) {
+                        auto data = ogg_streamer_->process_buffer({}, true);
+                        sentence = co_await send(data, true);
+                        auto [ec] = co_await ws_->async_close(websocket::close_code::normal, net::as_tuple(net::use_awaitable));
+                        clear("BytedanceASRV2 websocket close:", ec);
+                        BOOST_LOG_TRIVIAL(info) << "BytedanceASRV2 websocket closed";
+                    } else {
+                        auto data = ogg_streamer_->process_buffer(buf.value(), false);
+                        co_await send(data, false);
+                    }
+                    co_return sentence;
                 }
         };
 
@@ -411,16 +383,8 @@ namespace xiaozhi {
 
         }
 
-        void BytedanceV2::detect_opus(std::optional<beast::flat_buffer> buf) {
-            return impl_->detect_opus(std::move(buf));
-        }
-
-        void BytedanceV2::on_detect(const std::function<void(std::string)>& callback) {
-            return impl_->on_detect(callback);
-        }
-
-        void BytedanceV2::shutdown() {
-            return impl_->shutdown();
+        net::awaitable<std::string> BytedanceV2::detect_opus(const std::optional<beast::flat_buffer>& buf) {
+            co_return co_await impl_->detect_opus(buf);
         }
     }
 }

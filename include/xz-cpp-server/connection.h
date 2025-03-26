@@ -29,8 +29,10 @@ namespace xiaozhi {
             Vad vad_;
             net::any_io_executor executor_;
             boost::json::array dialogue_;
-            ThreadSafeQueue<std::string> llm_response_;
             std::vector<std::string> cmd_exit_;
+
+            ThreadSafeQueue<std::string> llm_response_;
+            ThreadSafeQueue<std::optional<beast::flat_buffer>> asr_audio_;
             
             boost::asio::steady_timer silence_timer_;
             std::unique_ptr<asr::Base> asr_ = nullptr;
@@ -38,13 +40,13 @@ namespace xiaozhi {
             std::unique_ptr<tts::Base> tts_ = nullptr;
             websocket::stream<beast::tcp_stream> ws_;
 
-            void audio_silence_end(const boost::system::error_code& ec);
-            net::awaitable<void> on_asr_detect(std::string);
+            net::awaitable<void> handle_asr_text(std::string);
             net::awaitable<void> handle_text(beast::flat_buffer &buffer);
             net::awaitable<void> handle_binary(beast::flat_buffer &buffer);
             net::awaitable<void> send_welcome();
             
             void push_llm_response(std::string str);
+            net::awaitable<void> asr_loop();
             net::awaitable<void> tts_loop();
         public:
             Connection(std::shared_ptr<Setting> setting, websocket::stream<beast::tcp_stream> ws, net::any_io_executor executor);

@@ -40,48 +40,15 @@ namespace xiaozhi {
 
         class Paraformer::Impl {
             private:
-                std::atomic<bool> is_released_ = false;
-                ThreadSafeQueue<std::optional<beast::flat_buffer>> queue;
-                std::function<void(std::string)> on_detect_cb_;
+            
+                std::vector<float> pcm_;
+                int decoded_length_ = 0;
+                std::string full_result_;
+
                 funasr::ParaformerOnline* online_model;
                 OpusDecoder* decoder_;
                 net::any_io_executor executor_;
 
-                net::awaitable<void> run() {
-                    std::vector<float> pcm(960*11);
-                    int decoded_length = 0;
-                    std::string full_result;
-                    while(!is_released_) {
-                        std::optional<beast::flat_buffer> buf;
-                        if(!queue.try_pop(buf)) {
-                            net::steady_timer timer(executor_, std::chrono::milliseconds(20));
-                            co_await timer.async_wait(net::use_awaitable);
-                            continue;
-                        }
-                        if(buf) {
-                            int decoded_samples = opus_decode_float(decoder_, 
-                                static_cast<const unsigned char*>(buf->data().data()), 
-                                buf->size(), pcm.data() + decoded_length, 960, 0);
-                            if(decoded_samples < 0) {
-                                BOOST_LOG_TRIVIAL(error) << "Paraformer opus 解码失败:" << opus_strerror(decoded_samples);
-                                continue;
-                            }
-                            decoded_length += decoded_samples;
-                        }
-                        if(decoded_length >= 9600 || !buf) {
-                            std::string result = online_model->Forward(pcm.data(), decoded_length, !buf);
-                            full_result += result;
-                            if(!result.empty()) {
-                                BOOST_LOG_TRIVIAL(debug) << "Paraformer detect asr:" << result << ",pcm length:" << decoded_length;
-                            }
-                            decoded_length = 0;
-                        }
-                        if(!buf) {
-                            on_detect_cb_(std::move(full_result));
-                        }
-                    }
-                    BOOST_LOG_TRIVIAL(info) << "Paraformer loop over";
-                }
             public:
                 Impl(const net::any_io_executor& executor, const YAML::Node& config):
                     executor_(executor) {
@@ -90,41 +57,37 @@ namespace xiaozhi {
                     int error;
                     decoder_ = opus_decoder_create(16000, 1, &error);
                     if (error != OPUS_OK) throw std::runtime_error("Paraformer Opus 解码器初始化失败");
-                    net::co_spawn(executor, run(), [](std::exception_ptr e) {
-                        if(e) {
-                            try {
-                                std::rethrow_exception(e);
-                            } catch(std::exception& e) {
-                                BOOST_LOG_TRIVIAL(error) << "Paraformer run error:" << e.what();
-                            }
-                        }
-                    });
+                    pcm_.reserve(960*11);
                 }
                 
 
                 ~Impl() {
-                    shutdown();
                     BOOST_LOG_TRIVIAL(debug) << "Paraformer asr destroyed";
                 }
 
-                void detect_opus(std::optional<beast::flat_buffer> buf) {
-                    queue.push(std::move(buf));
-                }
-
-                void on_detect(const std::function<void(std::string)>& callback) {
-                    on_detect_cb_ = callback;
-                }
-
-                void shutdown() {
-                    is_released_ = true;
-                    if(online_model) {
-                        delete online_model;
-                        online_model = nullptr;
+                net::awaitable<std::string> detect_opus(const std::optional<beast::flat_buffer>& buf) {
+                    if(buf) {
+                        int decoded_samples = opus_decode_float(decoder_, 
+                            static_cast<const unsigned char*>(buf->data().data()), 
+                            buf->size(), pcm_.data() + decoded_length_, 960, 0);
+                        if(decoded_samples < 0) {
+                            BOOST_LOG_TRIVIAL(error) << "Paraformer opus 解码失败:" << opus_strerror(decoded_samples);
+                            co_return "";
+                        }
+                        decoded_length_ += decoded_samples;
                     }
-                    if(decoder_) {
-                        opus_decoder_destroy(decoder_);
-                        decoder_ = nullptr;
+                    if(decoded_length_ >= 9600 || !buf) {
+                        std::string result = online_model->Forward(pcm_.data(), decoded_length_, !buf);
+                        full_result_ += result;
+                        if(!result.empty()) {
+                            BOOST_LOG_TRIVIAL(debug) << "Paraformer detect asr:" << result << ",pcm length:" << decoded_length_;
+                        }
+                        decoded_length_ = 0;
                     }
+                    if(!buf) {
+                        co_return std::move(full_result_);
+                    }
+                    co_return "";
                 }
         };
 
@@ -136,15 +99,8 @@ namespace xiaozhi {
 
         }
 
-        void Paraformer::detect_opus(std::optional<beast::flat_buffer> buf) {
-            return impl_->detect_opus(std::move(buf));
-        }
-
-        void Paraformer::on_detect(const std::function<void(std::string)>& callback) {
-            return impl_->on_detect(callback);
-        }
-        void Paraformer::shutdown() {
-            return impl_->shutdown();
+        net::awaitable<std::string> Paraformer::detect_opus(const std::optional<beast::flat_buffer>& buf) {
+            co_return co_await impl_->detect_opus(buf);
         }
     }
 }
