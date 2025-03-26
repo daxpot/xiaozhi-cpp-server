@@ -1,4 +1,3 @@
-#include <atomic>
 #include <boost/json/serialize.hpp>
 #include <cstdint>
 #include <memory>
@@ -176,7 +175,6 @@ namespace xiaozhi {
     namespace asr {
         class BytedanceV2::Impl {
             private:
-                std::atomic<bool> is_released_ = false;
                 WebsocketState ws_state_ = WebsocketState::Idle;
 
                 const std::string appid_;
@@ -302,6 +300,8 @@ namespace xiaozhi {
 
                 net::awaitable<std::string> send(std::vector<uint8_t>& audio, bool is_last) {
                     std::string sentence;
+                    if(audio.size() == 0)   //ogg_streamer_不是每次都返回数据，要凑齐一定数据了才有返回
+                        co_return sentence;
                     std::vector<uint8_t> data = build_payload(0x2, is_last ? 0x2 : 0x0, audio);
                     ws_->binary(true);
                     auto [ec, bytes_transferred] = co_await ws_->async_write(net::buffer(data), net::as_tuple(net::use_awaitable));
@@ -309,7 +309,7 @@ namespace xiaozhi {
                         clear("BytedanceASRV2 send audio:", ec);
                         co_return sentence;
                     }
-                    if(is_last) {
+                    if(is_last) {   //发送完数据之后最后再read会快一些
                         while(true) {
                             beast::flat_buffer buffer;
                             std::tie(ec, bytes_transferred) = co_await ws_->async_read(buffer, net::as_tuple(net::use_awaitable));

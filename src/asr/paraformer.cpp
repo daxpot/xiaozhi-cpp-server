@@ -1,4 +1,3 @@
-#include <atomic>
 #include <boost/asio/any_io_executor.hpp>
 #include <boost/asio/awaitable.hpp>
 #include <boost/log/trivial.hpp>
@@ -47,11 +46,9 @@ namespace xiaozhi {
 
                 funasr::ParaformerOnline* online_model;
                 OpusDecoder* decoder_;
-                net::any_io_executor executor_;
 
             public:
-                Impl(const net::any_io_executor& executor, const YAML::Node& config):
-                    executor_(executor) {
+                Impl(const net::any_io_executor& executor, const YAML::Node& config) {
                     auto offline_model = ParaformerSingleton::get_instance(config);
                     online_model = static_cast<funasr::ParaformerOnline*>(funasr::CreateModel(offline_model, {5, 10, 5}));
                     int error;
