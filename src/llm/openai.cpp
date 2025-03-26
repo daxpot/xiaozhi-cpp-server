@@ -45,18 +45,25 @@ namespace xiaozhi {
                         {"stream", true}
                     };
                     bool is_active = true;
-                    co_await request::stream_post(url, header_, boost::json::serialize(data), [&callback, this, &is_active](std::string res) {
+                    std::string last_line;  //处理json分段的情况
+                    co_await request::stream_post(url, header_, boost::json::serialize(data), [&callback, this, &is_active, &last_line](std::string res) {
                         std::vector<std::string> result;
                         boost::split(result, res, boost::is_any_of("\n"));
                         for(auto& line : result) {
                             if(line.size() == 0)
                                 continue;
+                            if(!line.starts_with("data:")) {
+                                line = last_line + line;
+                                last_line = "";
+                                BOOST_LOG_TRIVIAL(info) << "llm response segment connected:" << line;
+                            }
                             if(line.starts_with("data:") && line != "data: [DONE]") {
                                 boost::json::object rej;
                                 try {
                                     rej = boost::json::parse(std::string_view(line.data() + 5, line.size() - 5)).as_object();
                                 } catch(std::exception e) {
                                     BOOST_LOG_TRIVIAL(error) << "llm can't parse response:" << line;
+                                    last_line = line;
                                     continue;
                                 }
                                 if(rej.contains("choices")) {
@@ -79,7 +86,7 @@ namespace xiaozhi {
                                     }
                                 }
                             } else if(line != "data: [DONE]") {
-                                BOOST_LOG_TRIVIAL(info) << "llm response wierd:" << line;
+                                BOOST_LOG_TRIVIAL(info) << "llm response exception:" << line;
                             }
                         }
                     });
