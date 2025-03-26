@@ -5,6 +5,7 @@ from pydub import AudioSegment
 import os
 import numpy as np
 import json
+import time
 
 ws_url = "ws://127.0.0.1:8000"
 
@@ -59,13 +60,14 @@ async def connect(i, opus_data):
         for data in opus_data[0]:
             await ws.send(data, text=False)
         # return
+        start = time.time()
         while True:
             ret = await ws.recv()
             if isinstance(ret, bytes):
                 # print(i, len(ret))
                 pass
             else:
-                print(i, ret)
+                print(i, time.time() - start, ret)
                 rej = json.loads(ret)
                 if rej["type"] == "tts" and rej["state"] == "stop":
                     break
