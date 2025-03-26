@@ -113,12 +113,6 @@ namespace xiaozhi {
                 net::any_io_executor executor_; //需要比resolver和ws先初始化，所以申明在前面
                 std::unique_ptr<ws_stream> ws_;
 
-                void clear(const char* title, beast::error_code ec) {
-                    if(ec) {
-                        BOOST_LOG_TRIVIAL(error) << title << ec.message();
-                    }
-                }
-
                 net::awaitable<bool> connect() {
                     auto sec_ms_gec = DRM::DRM::generate_sec_ms_gec();
                     std::string path = std::format(path_format, TRUSTED_CLIENT_TOKEN, sec_ms_gec, uuid_);
@@ -126,7 +120,7 @@ namespace xiaozhi {
                         auto stream = co_await request::connect({true, host, port, path});
                         ws_ = std::make_unique<ws_stream>(std::move(stream));
                     } catch(const std::exception& e) {
-                        BOOST_LOG_TRIVIAL(error) << "Edge tts connect error:" << e.what();
+                        BOOST_LOG_TRIVIAL(info) << "Edge tts connect error:" << e.what();
                         co_return false;
                     }
                     beast::get_lowest_layer(*ws_).expires_never();
@@ -139,7 +133,7 @@ namespace xiaozhi {
                         }));
                     auto [ec] = co_await ws_->async_handshake(host + ':' + port, path, net::as_tuple(net::use_awaitable));
                     if(ec) {
-                        clear("Edge tts handshake:", ec);
+                        BOOST_LOG_TRIVIAL(info) << "Edge tts handshake:" << ec.message();
                         co_return false;
                     }
                     co_return true;
@@ -194,7 +188,13 @@ namespace xiaozhi {
 
                 net::awaitable<std::vector<std::vector<uint8_t>>> text_to_speak(const std::string& text) {
                     std::vector<std::vector<uint8_t>> audio;
-                    if(co_await connect() == false) {
+                    bool is_connected = false;
+                    int retry = 0;
+                    while(!is_connected && retry++ < 3) { //edge偶尔会连接不上，重试3次
+                        is_connected = co_await connect();
+                    }
+                    if(!is_connected) {
+                        BOOST_LOG_TRIVIAL(info) << "Edge tts connect max retry";
                         co_return audio;
                     }
                     co_await send_command_request();
