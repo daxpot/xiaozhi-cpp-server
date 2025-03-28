@@ -1,19 +1,4 @@
-#include <boost/asio/as_tuple.hpp>
-#include <boost/asio/awaitable.hpp>
-#include <boost/asio/use_awaitable.hpp>
-#include <boost/beast/core/buffers_to_string.hpp>
-#include <boost/beast/core/flat_buffer.hpp>
-#include <boost/beast/http/fields.hpp>
-#include <boost/beast/http/verb.hpp>
-#include <boost/log/trivial.hpp>
-#include <cstddef>
-#include <string_view>
-#include <utility>
 #include <xz-cpp-server/common/request.h>
-#include <boost/beast.hpp>
-#include <boost/beast/ssl.hpp>
-#include <regex>
-using tcp = net::ip::tcp;
 
 namespace request {
     UrlInfo parse_url(const std::string& url) {

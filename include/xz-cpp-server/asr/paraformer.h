@@ -1,7 +1,5 @@
 #pragma once
-#include <xz-cpp-server/asr/base.h>
-#include <boost/asio.hpp>
-#include <yaml-cpp/yaml.h>
+#include "base.h"
 
 namespace xiaozhi {
     namespace asr {

@@ -1,6 +1,4 @@
-#include <boost/beast/core/flat_buffer.hpp>
 #include <xz-cpp-server/silero_vad/silero_vad.h>
-#include <boost/log/trivial.hpp>
 #include <xz-cpp-server/silero_vad/vad.h>
 #include <xz-cpp-server/common/tools.h>
 

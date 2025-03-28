@@ -1,22 +1,10 @@
 #pragma once
-#include <atomic>
-#include <boost/asio/awaitable.hpp>
-#include <vector>
-#include <xz-cpp-server/config/setting.h>
+#include <xz-cpp-server/common/setting.h>
 #include <xz-cpp-server/silero_vad/vad.h>
-#include <boost/asio/any_io_executor.hpp>
-#include <boost/asio/steady_timer.hpp>
-#include <boost/beast/core/flat_buffer.hpp>
-#include <memory>
-#include <boost/asio.hpp>
-#include <boost/beast.hpp>
 #include <xz-cpp-server/asr/base.h>
 #include <xz-cpp-server/llm/base.h>
 #include <xz-cpp-server/tts/base.h>
 #include <xz-cpp-server/common/threadsafe_queue.hpp>
-namespace net = boost::asio;
-namespace beast = boost::beast;
-namespace websocket = boost::beast::websocket;
 
 namespace xiaozhi {
     class Connection: public std::enable_shared_from_this<Connection> {

@@ -1,9 +1,5 @@
-#include <cstdint>
-#include <mutex>
-#include <string>
-#include <vector>
 #include <xz-cpp-server/silero_vad/silero_vad.h>
-#include <xz-cpp-server/config/setting.h>
+#include <xz-cpp-server/common/setting.h>
 
 namespace xiaozhi {
 

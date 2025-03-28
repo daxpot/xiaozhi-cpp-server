@@ -1,6 +1,5 @@
 #pragma once
-#include <xz-cpp-server/llm/base.h>
-#include <yaml-cpp/yaml.h>
+#include "base.h"
 
 namespace xiaozhi {
     namespace llm {

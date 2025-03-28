@@ -1,5 +1,4 @@
 #include <catch2/catch_test_macros.hpp>
-#include <string>
 #include <xz-cpp-server/common/tools.h>
 
 TEST_CASE("find last segment") {

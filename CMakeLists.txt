@@ -22,6 +22,11 @@ include_directories("${PROJECT_SOURCE_DIR}/extern/onnxruntime-linux-x64-1.21.0/i
 add_subdirectory(extern/kaldi-native-fbank)
 include_directories("${PROJECT_SOURCE_DIR}/extern/kaldi-native-fbank")
 add_subdirectory(extern/yaml-cpp)
+
+add_library(precomp INTERFACE)
+target_link_libraries(precomp INTERFACE Boost::log Boost::json yaml-cpp::yaml-cpp)
+target_precompile_headers(precomp INTERFACE "${PROJECT_SOURCE_DIR}/include/xz-cpp-server/precomp.h")
+
 add_subdirectory(apps)
 add_subdirectory(src)
 

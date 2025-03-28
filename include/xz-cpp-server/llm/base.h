@@ -1,8 +1,4 @@
 #pragma once
-#include <string>
-#include <boost/asio.hpp>
-#include <boost/json/array.hpp>
-namespace net = boost::asio;
 
 namespace xiaozhi {
     namespace llm {

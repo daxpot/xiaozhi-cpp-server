@@ -1,12 +1,5 @@
 #pragma once
-#include <memory>
-#include <xz-cpp-server/config/setting.h>
-#include <boost/asio.hpp>
-#include <boost/beast.hpp>
-namespace net = boost::asio;
-namespace beast = boost::beast;
-namespace http = boost::beast::http;
-namespace websocket = boost::beast::websocket;
+#include <xz-cpp-server/common/setting.h>
 
 namespace xiaozhi {
     class Server {    

@@ -1,5 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
-#include <xz-cpp-server/config/setting.h>
+#include <xz-cpp-server/common/setting.h>
 
 TEST_CASE("load setting") {
     auto setting = xiaozhi::Setting::getSetting();

@@ -1,10 +1,7 @@
-#include <boost/log/trivial.hpp>
-#include <cstddef>
-#include <format>
-#include <fstream>
 #include <funasr/paraformer/model.h>
-#include <xz-cpp-server/config/logger.h>
+#include <xz-cpp-server/common/logger.h>
 #include <opus/opus.h>
+#include <fstream>
 
 int main() {
     init_logging("DEBUG");

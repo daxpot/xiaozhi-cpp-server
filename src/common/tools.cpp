@@ -1,7 +1,3 @@
-#include <boost/log/trivial.hpp>
-#include <cstdint>
-#include <sstream>
-#include <unordered_set>
 #include <xz-cpp-server/common/tools.h>
 #include <boost/uuid/uuid.hpp>
 #include <boost/uuid/uuid_io.hpp>
@@ -9,7 +5,7 @@
 #include <boost/iostreams/filtering_streambuf.hpp>
 #include <boost/iostreams/copy.hpp>
 #include <boost/iostreams/filter/gzip.hpp>
-#include <chrono>
+#include <unordered_set>
 
 // 常见的中文标点符号（UTF-8 编码）
 static const std::unordered_set<uint32_t> chineseSegments {

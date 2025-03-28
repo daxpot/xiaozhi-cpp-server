@@ -1,7 +1,5 @@
 #pragma once
-#include <memory>
 #include "onnxruntime_cxx_api.h"
-#include <vector>
 
 namespace xiaozhi {
     class VoiceDetector {

@@ -1,9 +1,6 @@
 #pragma once
 #include <opus/opus.h>
-#include <boost/beast.hpp>
-#include <xz-cpp-server/config/setting.h>
-
-namespace beast = boost::beast;
+#include <xz-cpp-server/common/setting.h>
 
 namespace xiaozhi {
     class Vad {

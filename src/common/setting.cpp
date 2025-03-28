@@ -1,6 +1,4 @@
-#include <mutex>
-#include <string>
-#include <xz-cpp-server/config/setting.h>
+#include <xz-cpp-server/common/setting.h>
 
 static std::shared_ptr<xiaozhi::Setting> setting = nullptr;
 static std::once_flag settingFlag;

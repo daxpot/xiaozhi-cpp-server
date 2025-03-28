@@ -1,13 +1,4 @@
 #pragma once
-#include <boost/asio/awaitable.hpp>
-#include <boost/beast.hpp>
-#include <boost/json.hpp>
-
-namespace json = boost::json;
-namespace net = boost::asio;
-namespace beast = boost::beast;
-namespace http = beast::http;
-namespace ssl = net::ssl;
 
 namespace request {
     struct UrlInfo {

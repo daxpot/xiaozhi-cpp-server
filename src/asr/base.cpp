@@ -1,8 +1,7 @@
-#include <boost/log/trivial.hpp>
 #include <xz-cpp-server/asr/base.h>
 #include <xz-cpp-server/asr/bytedancev2.h>
 #include <xz-cpp-server/asr/paraformer.h>
-#include <xz-cpp-server/config/setting.h>
+#include <xz-cpp-server/common/setting.h>
 
 namespace xiaozhi {
     namespace asr {

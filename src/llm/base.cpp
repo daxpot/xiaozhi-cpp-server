@@ -1,10 +1,8 @@
-#include <boost/log/trivial.hpp>
-#include <stdexcept>
 #include <xz-cpp-server/llm/base.h>
 #include <xz-cpp-server/llm/cozev3.h>
 #include <xz-cpp-server/llm/dify.h>
 #include <xz-cpp-server/llm/openai.h>
-#include <xz-cpp-server/config/setting.h>
+#include <xz-cpp-server/common/setting.h>
 
 namespace xiaozhi {
     namespace llm {

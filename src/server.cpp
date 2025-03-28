@@ -1,8 +1,4 @@
-#include "xz-cpp-server/common/tools.h"
-#include <boost/asio/buffer.hpp>
-#include <boost/asio/this_coro.hpp>
-#include <boost/log/trivial.hpp>
-#include <memory>
+#include <xz-cpp-server/common/tools.h>
 #include <xz-cpp-server/server.h>
 #include <xz-cpp-server/connection.h>
 

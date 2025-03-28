@@ -1,8 +1,7 @@
-#include <boost/log/trivial.hpp>
 #include <xz-cpp-server/tts/base.h>
 #include <xz-cpp-server/tts/bytedancev3.h>
 #include <xz-cpp-server/tts/edge.h>
-#include <xz-cpp-server/config/setting.h>
+#include <xz-cpp-server/common/setting.h>
 
 namespace xiaozhi {
     namespace tts {

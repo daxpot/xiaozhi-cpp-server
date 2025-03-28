@@ -1,6 +1,4 @@
 #pragma once
-#include <boost/asio/awaitable.hpp>
-namespace net = boost::asio;
 
 namespace xiaozhi {
     namespace tts {

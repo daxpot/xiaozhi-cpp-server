@@ -1,21 +1,8 @@
-#include <boost/json/serialize.hpp>
-#include <cstdint>
-#include <memory>
-#include <optional>
-#include <vector>
 #include <xz-cpp-server/asr/bytedancev2.h>
-#include <boost/json.hpp>
 #include <xz-cpp-server/common/tools.h>
-#include <boost/log/trivial.hpp>
 #include <ogg/ogg.h>
 #include <xz-cpp-server/common/threadsafe_queue.hpp>
-#include <boost/beast/ssl.hpp>
 
-using tcp = net::ip::tcp;
-namespace ssl = net::ssl;
-namespace websocket = beast::websocket;
-namespace http = beast::http;
-namespace json = boost::json;
 using wss_stream = websocket::stream<ssl::stream<beast::tcp_stream>>;
 
 const std::string host{"openspeech.bytedance.com"};

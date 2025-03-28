@@ -1,6 +1,6 @@
 #include <xz-cpp-server/server.h>
-#include <xz-cpp-server/config/setting.h>
-#include <xz-cpp-server/config/logger.h>
+#include <xz-cpp-server/common/setting.h>
+#include <xz-cpp-server/common/logger.h>
 
 
 int main(int argc, char* argv[]) {

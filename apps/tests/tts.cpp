@@ -1,12 +1,7 @@
-#include <boost/asio/co_spawn.hpp>
-#include <boost/asio/io_context.hpp>
-#include <iostream>
 #include <xz-cpp-server/tts/base.h>
-#include <xz-cpp-server/config/logger.h>
-#include <iostream>
-#include <fstream>
-#include <string>
+#include <xz-cpp-server/common/logger.h>
 #include <xz-cpp-server/common/tools.h>
+#include <fstream>
 
 bool write_binary_to_file(const std::string& filename, const std::vector<std::string>& data) {
     // 以二进制模式打开文件
@@ -14,7 +9,7 @@ bool write_binary_to_file(const std::string& filename, const std::vector<std::st
     
     // 检查文件是否成功打开
     if (!out_file.is_open()) {
-        std::cerr << "Failed to open file: " << filename << std::endl;
+        BOOST_LOG_TRIVIAL(error) << "Failed to open file: " << filename;
         return false;
     }
 
@@ -25,7 +20,7 @@ bool write_binary_to_file(const std::string& filename, const std::vector<std::st
 
     // 检查写入是否成功
     if (!out_file.good()) {
-        std::cerr << "Error occurred while writing to file: " << filename << std::endl;
+        BOOST_LOG_TRIVIAL(error) << "Error occurred while writing to file: " << filename;
         return false;
     }
 

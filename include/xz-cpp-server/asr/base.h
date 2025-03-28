@@ -1,8 +1,4 @@
 #pragma once
-#include <boost/asio/awaitable.hpp>
-#include <boost/beast.hpp>
-namespace net = boost::asio;
-namespace beast = boost::beast;
 
 namespace xiaozhi {
     namespace asr {

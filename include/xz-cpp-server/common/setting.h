@@ -1,6 +1,4 @@
 #pragma once
-#include <yaml-cpp/yaml.h>
-#include <memory>
 
 namespace xiaozhi {
     class Setting {

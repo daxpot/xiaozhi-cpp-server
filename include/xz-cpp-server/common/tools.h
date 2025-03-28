@@ -1,7 +1,6 @@
 #pragma once
-#include <exception>
 #include <opus/opus.h>
-#include <string>
+
 namespace tools {
     enum SegmentRet {
         NONE = 0,

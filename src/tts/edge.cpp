@@ -1,27 +1,8 @@
-#include "xz-cpp-server/common/request.h"
-#include "xz-cpp-server/common/tools.h"
-#include <boost/asio/as_tuple.hpp>
-#include <boost/asio/buffer.hpp>
-#include <boost/asio/ssl/context.hpp>
-#include <boost/asio/use_awaitable.hpp>
-#include <boost/beast/core/buffers_to_string.hpp>
-#include <boost/beast/core/error.hpp>
-#include <boost/beast/websocket/error.hpp>
-#include <boost/beast/websocket/rfc6455.hpp>
-#include <cstdint>
-#include <format>
-#include <iostream>
-#include <memory>
+#include <xz-cpp-server/common/request.h>
+#include <xz-cpp-server/common/tools.h>
 #include <opus/opus.h>
 #include <xz-cpp-server/tts/edge.h>
-#include <boost/beast.hpp>
-#include <boost/beast/ssl.hpp>
-#include <boost/log/trivial.hpp>
-using tcp = net::ip::tcp;
-namespace beast = boost::beast;
-namespace ssl = net::ssl;
-namespace websocket = beast::websocket;
-using ws_stream = websocket::stream<ssl::stream<beast::tcp_stream>>;
+using wss_stream = websocket::stream<ssl::stream<beast::tcp_stream>>;
 
 const std::string host{"speech.platform.bing.com"};
 const std::string port{"443"};
@@ -111,14 +92,14 @@ namespace xiaozhi {
                 std::string uuid_;
 
                 net::any_io_executor executor_; //需要比resolver和ws先初始化，所以申明在前面
-                std::unique_ptr<ws_stream> ws_;
+                std::unique_ptr<wss_stream> ws_;
 
                 net::awaitable<bool> connect() {
                     auto sec_ms_gec = DRM::DRM::generate_sec_ms_gec();
                     std::string path = std::format(path_format, TRUSTED_CLIENT_TOKEN, sec_ms_gec, uuid_);
                     try {
                         auto stream = co_await request::connect({true, host, port, path});
-                        ws_ = std::make_unique<ws_stream>(std::move(stream));
+                        ws_ = std::make_unique<wss_stream>(std::move(stream));
                     } catch(const std::exception& e) {
                         BOOST_LOG_TRIVIAL(info) << "Edge tts connect error:" << e.what();
                         co_return false;

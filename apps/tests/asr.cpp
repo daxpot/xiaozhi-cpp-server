@@ -1,13 +1,8 @@
-#include <boost/asio/awaitable.hpp>
-#include <boost/asio/buffer.hpp>
-#include <boost/asio/co_spawn.hpp>
-#include <boost/asio/use_awaitable.hpp>
-#include <boost/log/trivial.hpp>
-#include <fstream>
-#include <xz-cpp-server/config/setting.h>
+#include <xz-cpp-server/common/setting.h>
 #include <xz-cpp-server/asr/base.h>
-#include <xz-cpp-server/config/logger.h>
+#include <xz-cpp-server/common/logger.h>
 #include <xz-cpp-server/common/tools.h>
+#include <fstream>
 
 net::awaitable<void> test() {
     auto executor = co_await net::this_coro::executor;

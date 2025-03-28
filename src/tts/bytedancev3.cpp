@@ -1,29 +1,9 @@
-#include <boost/asio/awaitable.hpp>
-#include <boost/beast/core/error.hpp>
-#include <boost/beast/core/flat_buffer.hpp>
-#include <boost/beast/core/make_printable.hpp>
-#include <boost/beast/http/field.hpp>
-#include <boost/json/object.hpp>
-#include <boost/json/serialize.hpp>
-#include <cstddef>
-#include <cstdint>
-#include <memory>
-#include <string>
-#include <vector>
-#include <xz-cpp-server/config/setting.h>
 #include <xz-cpp-server/tts/bytedancev3.h>
-#include <boost/beast.hpp>
-#include <boost/beast/ssl.hpp>
-#include <boost/log/trivial.hpp>
 #include <xz-cpp-server/common/tools.h>
 #include <xz-cpp-server/common/request.h>
-#include <boost/json.hpp>
 #include <opus/opus.h>
-using tcp = net::ip::tcp;
-namespace beast = boost::beast;
-namespace ssl = net::ssl;
-namespace websocket = beast::websocket;
-using ws_stream = websocket::stream<ssl::stream<beast::tcp_stream>>;
+
+using wss_stream = websocket::stream<ssl::stream<beast::tcp_stream>>;
 
 const std::string host{"openspeech.bytedance.com"};
 const std::string port{"443"};
@@ -183,7 +163,7 @@ namespace xiaozhi {
                 std::string uuid_;
 
                 net::any_io_executor executor_; //需要比resolver和ws先初始化，所以申明在前面
-                std::unique_ptr<ws_stream> ws_;
+                std::unique_ptr<wss_stream> ws_;
 
                 void clear(const char* title, beast::error_code ec) {
                     if(ec) {
@@ -194,7 +174,7 @@ namespace xiaozhi {
                 net::awaitable<bool> connect() {
                     try {
                         auto stream = co_await request::connect({true, host, port, path});
-                        ws_ = std::make_unique<ws_stream>(std::move(stream));
+                        ws_ = std::make_unique<wss_stream>(std::move(stream));
                     } catch(const std::exception& e) {
                         BOOST_LOG_TRIVIAL(error) << "BytedanceTTSV3 connect error:" << e.what();
                         co_return false;

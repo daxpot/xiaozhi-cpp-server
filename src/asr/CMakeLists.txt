@@ -1,11 +1,9 @@
 file(GLOB_RECURSE cpp_files *.cpp)
 add_library(asr ${cpp_files})
 
-target_link_libraries(asr PUBLIC yaml-cpp::yaml-cpp)
-target_link_libraries(asr PUBLIC common_tools)
-target_link_libraries(asr PUBLIC config_setting)
+target_link_libraries(asr PRIVATE precomp)
+target_link_libraries(asr PRIVATE common)
 target_link_libraries(asr PRIVATE OpenSSL::SSL)
-target_link_libraries(asr PUBLIC Boost::json)
 target_link_libraries(asr PRIVATE ${OGG_LIBRARY})
 target_link_libraries(asr PRIVATE ${OPUS_LIBRARY})
 target_link_libraries(asr PRIVATE paraformer)
