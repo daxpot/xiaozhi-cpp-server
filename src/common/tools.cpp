@@ -119,4 +119,14 @@ namespace tools {
         }
         return {encoder, decoder};
     }
+
+    void on_spawn_complete(std::string_view title, std::exception_ptr e) {
+        if(e) {
+            try {
+                std::rethrow_exception(e);
+            } catch(std::exception& e) {
+                BOOST_LOG_TRIVIAL(error) << title << " spawn error:" << e.what();
+            }
+        }
+    }
 }

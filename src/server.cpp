@@ -1,3 +1,4 @@
+#include "xz-cpp-server/common/tools.h"
 #include <boost/asio/buffer.hpp>
 #include <boost/asio/this_coro.hpp>
 #include <boost/log/trivial.hpp>
@@ -44,8 +45,7 @@ namespace xiaozhi {
         co_await ws.async_accept(req, net::use_awaitable);
         auto executor = co_await net::this_coro::executor;
         auto conn = std::make_shared<Connection>(setting, std::move(ws), executor);
-        conn->init_loop();
-        co_await conn->handle();
+        conn->start();
     }
 
     net::awaitable<void> Server::listen(net::ip::tcp::endpoint endpoint) {
@@ -57,16 +57,7 @@ namespace xiaozhi {
                 run_session(websocket::stream<beast::tcp_stream>{
                     co_await acceptor.async_accept(net::use_awaitable)
                 }),
-                [](std::exception_ptr e) {
-                    if(e) {
-                        try {
-                            std::rethrow_exception(e);
-                        } catch(std::exception& e) {
-                            BOOST_LOG_TRIVIAL(error) << "Session error:" << e.what();
-                        }
-                    }
-                }
-            );
+                std::bind_front(tools::on_spawn_complete, "Session"));
         }
     }
 
@@ -74,16 +65,7 @@ namespace xiaozhi {
         auto address = net::ip::make_address(setting->config["server"]["ip"].as<std::string>());
         net::co_spawn(ioc, 
             listen(net::ip::tcp::endpoint{address, setting->config["server"]["port"].as<unsigned short>()}),
-            [](std::exception_ptr e) {
-                if(e) {
-                    try {
-                        std::rethrow_exception(e);
-                    } catch(std::exception const& e) {
-                        BOOST_LOG_TRIVIAL(error) << "Listen error:" << e.what();
-                    }
-                }
-            }  
-        );
+            std::bind_front(tools::on_spawn_complete, "Listen"));
         std::vector<std::thread> v;
         auto threads = setting->config["threads"].as<int>();
         v.reserve(threads-1);

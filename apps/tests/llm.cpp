@@ -6,6 +6,7 @@
 #include <xz-cpp-server/config/logger.h>
 #include <iostream>
 #include <string>
+#include <xz-cpp-server/common/tools.h>
 
 net::awaitable<void> test() {
     auto executor = co_await net::this_coro::executor;
@@ -27,14 +28,6 @@ net::awaitable<void> test() {
 int main() {
     init_logging("DEBUG");
     boost::asio::io_context ioc;
-    net::co_spawn(ioc, test(), [](std::exception_ptr e) {
-        if(e) {
-            try {
-                std::rethrow_exception(e);
-            } catch(std::exception const& e) {
-                std::cerr<< "Test error:" << e.what();
-            }
-        }
-    });
+    net::co_spawn(ioc, test(), std::bind_front(tools::on_spawn_complete, "Test llm"));
     ioc.run();
 }

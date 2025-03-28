@@ -9,6 +9,7 @@
 #include <boost/system/detail/error_code.hpp>
 #include <chrono>
 #include <exception>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <queue>
@@ -25,6 +26,7 @@ namespace xiaozhi {
         vad_(setting),
         executor_(executor),
         ws_(std::move(ws)),
+        strand_(ws_.get_executor()),
         silence_timer_(executor_) {
             auto prompt = setting->config["prompt"].as<std::string>();
             size_t pos = prompt.find("{date_time}");
@@ -41,25 +43,17 @@ namespace xiaozhi {
             tts_ = tts::createTTS(executor_);
     }
 
-    void Connection::init_loop() {
-        net::co_spawn(executor_, asr_loop(), [self=shared_from_this()](std::exception_ptr e) {
-            if(e) {
-                try {
-                    std::rethrow_exception(e);
-                } catch(std::exception& e) {
-                    BOOST_LOG_TRIVIAL(error) << "Connection asr loop spawn error:" << e.what();
-                }
-            }
-        });
-        net::co_spawn(executor_, tts_loop(), [self=shared_from_this()](std::exception_ptr e) {
-            if(e) {
-                try {
-                    std::rethrow_exception(e);
-                } catch(std::exception& e) {
-                    BOOST_LOG_TRIVIAL(error) << "Connection tts loop spawn error:" << e.what();
-                }
-            }
-        });
+    void Connection::start() {
+        auto self = shared_from_this();
+        net::co_spawn(executor_, [self] {
+            return self->asr_loop(); 
+        }, std::bind_front(tools::on_spawn_complete, "Connection asr loop"));
+        net::co_spawn(strand_, [self] {
+            return self->tts_loop(); 
+        }, std::bind_front(tools::on_spawn_complete, "Connection tts loop"));
+        net::co_spawn(strand_, [self] {
+            return self->handle(); 
+        }, std::bind_front(tools::on_spawn_complete, "Connection handle"));
     }
 
     net::awaitable<void> Connection::asr_loop() {
@@ -71,15 +65,9 @@ namespace xiaozhi {
             }
             auto text = co_await asr_->detect_opus(buf);
             if(!buf && text.size() > 0) {
-                net::co_spawn(executor_, handle_asr_text(std::move(text)), [self=shared_from_this()](std::exception_ptr e) {
-                    if(e) {
-                        try {
-                            std::rethrow_exception(e);
-                        } catch(std::exception& e) {
-                            BOOST_LOG_TRIVIAL(error) << "Connection handle asr text spawn error:" << e.what();
-                        }
-                    }
-                });
+                net::co_spawn(executor_, [self=shared_from_this(), text=std::move(text)] {
+                    return self->handle_asr_text(std::move(text));
+                }, std::bind_front(tools::on_spawn_complete, "Connection handle asr text"));
             }
         }
         BOOST_LOG_TRIVIAL(info) << "Connection asr loop over";

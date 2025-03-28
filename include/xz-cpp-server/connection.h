@@ -39,6 +39,7 @@ namespace xiaozhi {
             std::unique_ptr<llm::Base> llm_ = nullptr;
             std::unique_ptr<tts::Base> tts_ = nullptr;
             websocket::stream<beast::tcp_stream> ws_;
+            net::strand<net::any_io_executor> strand_;
 
             net::awaitable<void> handle_asr_text(std::string);
             net::awaitable<void> handle_text(beast::flat_buffer &buffer);
@@ -48,10 +49,10 @@ namespace xiaozhi {
             void push_llm_response(std::string str);
             net::awaitable<void> asr_loop();
             net::awaitable<void> tts_loop();
+            net::awaitable<void> handle();
         public:
             Connection(std::shared_ptr<Setting> setting, websocket::stream<beast::tcp_stream> ws, net::any_io_executor executor);
             ~Connection();
-            void init_loop();
-            net::awaitable<void> handle();
+            void start();
     };
 }
