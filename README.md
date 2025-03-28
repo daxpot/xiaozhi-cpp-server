@@ -5,7 +5,7 @@
 
 项目根据Python版本的[xiaozhi-esp32-server](https://github.com/xinnan-tech/xiaozhi-esp32-server)改版
 
-基于BOOST, C++20协程开发。
+基于BOOST 1.83, C++20协程开发。
 
 ---
 
