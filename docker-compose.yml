@@ -1,0 +1,12 @@
+services:
+  # Web Server 服务
+  webserver:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    volumes:
+      - ./config.yaml:/app/config.yaml
+      - ./models:/app/models
