@@ -67,7 +67,7 @@
 
 ## 使用方式
 
-参看build.sh安装依赖和构建
+参看[install_deps.sh](https://github.com/daxpot/xiaozhi-cpp-server/blob/master/scripts/install_deps.sh)安装依赖和构建
 
 启动命令
 ```
